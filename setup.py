@@ -28,5 +28,11 @@ setup(
             "patrict-osint=main:main"
         ],
     },
+    include_package_data=True,
+    package_data={
+        "": ["*.json", "*.html", "*.yaml", "*.yml"],
+        "data": ["*.json"],
+        "reports": ["templates/*.html"],
+    },
     python_requires=">=3.8",
 )
