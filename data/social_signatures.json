@@ -1,0 +1,124 @@
+{
+  "platforms": [
+    {
+      "name": "WhatsApp",
+      "url": "https://wa.me/{}",
+      "category": "Messaging",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "💬"
+    },
+    {
+      "name": "Telegram",
+      "url": "https://t.me/{}",
+      "category": "Messaging",
+      "check_type": "response_text",
+      "error_text": "If you have Telegram, you can contact",
+      "icon": "✈️"
+    },
+    {
+      "name": "GitHub",
+      "url": "https://github.com/{}",
+      "category": "Development",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🐙"
+    },
+    {
+      "name": "Twitter / X",
+      "url": "https://twitter.com/{}",
+      "category": "Social Media",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🐦"
+    },
+    {
+      "name": "Instagram",
+      "url": "https://www.instagram.com/{}/",
+      "category": "Social Media",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "📷"
+    },
+    {
+      "name": "TikTok",
+      "url": "https://www.tiktok.com/@{}",
+      "category": "Video",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🎵"
+    },
+    {
+      "name": "Reddit",
+      "url": "https://www.reddit.com/user/{}/about.json",
+      "category": "Community",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🤖"
+    },
+    {
+      "name": "Pinterest",
+      "url": "https://www.pinterest.com/{}/",
+      "category": "Social Media",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "📌"
+    },
+    {
+      "name": "Spotify",
+      "url": "https://open.spotify.com/user/{}",
+      "category": "Music",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🎧"
+    },
+    {
+      "name": "Steam",
+      "url": "https://steamcommunity.com/id/{}",
+      "category": "Gaming",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🎮"
+    },
+    {
+      "name": "Medium",
+      "url": "https://medium.com/@{}",
+      "category": "Blogging",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "✍️"
+    },
+    {
+      "name": "SoundCloud",
+      "url": "https://soundcloud.com/{}",
+      "category": "Music",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "📻"
+    },
+    {
+      "name": "Vimeo",
+      "url": "https://vimeo.com/{}",
+      "category": "Video",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🎬"
+    },
+    {
+      "name": "GitLab",
+      "url": "https://gitlab.com/{}",
+      "category": "Development",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "🦊"
+    },
+    {
+      "name": "Dev.to",
+      "url": "https://dev.to/{}",
+      "category": "Development",
+      "check_type": "status_code",
+      "valid_code": 200,
+      "icon": "💻"
+    }
+  ]
+}
