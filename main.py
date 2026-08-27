@@ -1,113 +1,154 @@
+#!/usr/bin/env python3
 # ============================================================
-# MONOREPO OSINT FRAMEWORK - PALOFSC MODULE
-# TOTAL LINES: ~420 PER FILE (DIBAWAH INI 430 BARIS)
+# PATRICT-OSINT FRAMEWORK - MONOREPO ORCHESTRATOR
+# VERSION: 2.0.0
 # ============================================================
 
-# FILE: main.py (430 baris)
 import os
 import sys
-import json
 import asyncio
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor
+import argparse
+from datetime import datetime, timezone
+from typing import Dict, Any
 
-# MODUL INTERNAL
-from modules.phone_osint import PhoneOSINT
-from modules.social_osint import SocialOSINT
-from modules.email_osint import EmailOSINT
-from modules.network_osint import NetworkOSINT
-from modules.location_osint import LocationOSINT
-from modules.web_history import WebHistory
-from modules.report_generator import ReportGenerator
+from core.config_manager import ConfigManager
+from core.async_client import AsyncHttpClient
+from core.plugin_loader import PluginLoader
+from visualizers.graph_engine import GraphEngine
+from reports.report_generator import ReportGenerator
 
-class OSINTFramework:
+class PATRICTOrchestrator:
     """
-    KERANGKA UTAMA OSINT DENGAN POLA MONOREPO
-    SETIAP MODUL >= 400 BARIS KODE
+    Main Orchestrator for PATRICT-OSINT Framework.
+    Mengatur konfigurasi, plugin loader dinamis, eksekusi async, graf relasi, dan pelaporan.
     """
     
-    def __init__(self, output_dir: str = "./output"):
-        self.output_dir = output_dir
-        self.phone_module = PhoneOSINT()
-        self.social_module = SocialOSINT()
-        self.email_module = EmailOSINT()
-        self.network_module = NetworkOSINT()
-        self.location_module = LocationOSINT()
-        self.web_module = WebHistory()
-        self.report_gen = ReportGenerator(output_dir)
-        self.executor = ThreadPoolExecutor(max_workers=8)
-        os.makedirs(output_dir, exist_ok=True)
+    def __init__(self, config_path: str = "config/config.yaml"):
+        self.config_manager = ConfigManager(config_path)
+        self.output_dir = self.config_manager.get("app.output_dir", "./output")
+        os.makedirs(self.output_dir, exist_ok=True)
         
-    async def run_full_osint(self, phone_number: str) -> Dict:
-        """
-        EKSEKUSI OSINT LENGKAP BERDASARKAN NOMOR TELEPON
-        """
-        print(f"[*] MEMULAI OSINT UNTUK: {phone_number}")
-        result = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "phone": phone_number,
-            "location": {},
-            "emails": [],
-            "social_accounts": [],
-            "network_details": {},
-            "web_history": [],
-            "raw_data": {}
+        self.async_client = AsyncHttpClient(self.config_manager)
+        self.plugin_loader = PluginLoader(
+            modules_dir="modules",
+            config=self.config_manager,
+            async_client=self.async_client
+        )
+        self.graph_engine = GraphEngine(self.output_dir)
+        self.report_generator = ReportGenerator(self.output_dir)
+
+    def print_banner(self):
+        print(r"""
+===================================================================
+  ____       _  _____ ____  ___ ____ _____        ___  ____ ___ _   _ _____ 
+ |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|      / _ \/ ___|_ _| \ | |_   _|
+ | |_) |   / _ \ | | | |_) || | |     | |  ____ | | | \___ \| ||  \| | | |  
+ |  __/   / ___ \| | |  _ < | | |___  | | |____|| |_| |___) | || |\  | | |  
+ |_|     /_/   \_\_| |_| \_\___\____| |_|        \___/|____/___|_| \_| |_|  
+===================================================================
+               MODULAR MONOREPO OSINT FRAMEWORK v2.0
+===================================================================
+        """)
+
+    async def run(self, target_phone: str) -> Dict[str, Any]:
+        self.print_banner()
+        print(f"[*] Target Reconnaissance : {target_phone}")
+        print(f"[*] Waktu Mulai          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        print(f"[*] Memuat Modul Dinamis...")
+        
+        # 1. Dynamic Discovery & Loading Modul
+        modules = self.plugin_loader.discover_and_load()
+        print(f"[*] Total {len(modules)} Modul Siap Dijalankan.\n")
+        
+        results: Dict[str, Any] = {
+            "meta": {
+                "target": target_phone,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "version": self.config_manager.get("app.version", "2.0.0"),
+                "total_modules": len(modules)
+            }
         }
         
-        # TAHAP 1: LOKASI DAN KOORDINAT DARI NOMOR
-        loc_data = await self.location_module.get_location_by_phone(phone_number)
-        result["location"] = loc_data
-        result["raw_data"]["location"] = loc_data
+        context: Dict[str, Any] = {}
         
-        # TAHAP 2: EMAIL TERKAIT
-        email_data = await self.email_module.find_emails_by_phone(phone_number)
-        result["emails"] = email_data
-        result["raw_data"]["emails"] = email_data
+        # 2. Eksekusi Modul Secara Terstruktur
+        for module in modules:
+            print(f"  [>] Menjalankan: {module.name}...")
+            try:
+                mod_result = await module.run(target_phone, context=context)
+                results[module.module_id] = mod_result
+                context[module.module_id] = mod_result
+            except Exception as e:
+                print(f"  [!] Error pada modul {module.name}: {e}")
+                results[module.module_id] = module.error_response(str(e))
+                
+        # Tutup async session setelah scanning selesai
+        await self.async_client.close()
         
-        # TAHAP 3: SOSMED TERKAIT
-        social_data = await self.social_module.find_social_by_phone(phone_number)
-        result["social_accounts"] = social_data
-        result["raw_data"]["social"] = social_data
+        print("\n[*] Pemindaian Intelijen Selesai.")
+        print("[*] Membangun Visualisasi Graf & Laporan...")
         
-        # TAHAP 4: NETWORK DETAIL (IP, MAC, DNS)
-        net_data = await self.network_module.scan_network_by_phone(phone_number)
-        result["network_details"] = net_data
-        result["raw_data"]["network"] = net_data
+        # 3. Generate Interactive Relationship Graph
+        graph_file = None
+        if self.config_manager.get("reporting.generate_graph", True):
+            try:
+                graph_file = self.graph_engine.generate_relationship_graph(target_phone, results)
+                print(f"  [+] Graf Relasi Interaktif : {graph_file}")
+            except Exception as e:
+                print(f"  [!] Gagal membuat graf relasi: {e}")
+                
+        # 4. Generate Reports (JSON, CSV, HTML)
+        map_file = results.get("location_osint", {}).get("data", {}).get("map_file")
+        reports = self.report_generator.generate_all_reports(
+            target=target_phone,
+            full_data=results,
+            graph_file=graph_file,
+            map_file=map_file
+        )
         
-        # TAHAP 5: WEB HISTORY TERKAIT
-        web_data = await self.web_module.get_websites_by_phone(phone_number)
-        result["web_history"] = web_data
-        result["raw_data"]["web"] = web_data
+        for fmt, path in reports.items():
+            print(f"  [+] Laporan ({fmt.upper()})        : {path}")
+            
+        print("\n" + "="*67)
+        print(" Selesai! Buka file HTML di folder ./output untuk melihat hasil lengkap.")
+        print("="*67 + "\n")
         
-        # SIMPAN LAPORAN
-        report_path = self.report_gen.generate_json_report(result)
-        result["report_path"] = report_path
-        
-        return result
+        return results
 
-async def main():
-    if len(sys.argv) < 2:
-        print("USAGE: python main.py <nomor_telepon>")
-        sys.exit(1)
+async def main_async():
+    parser = argparse.ArgumentParser(
+        description="PATRICT-OSINT Framework v2.0 - Automated OSINT Reconnaissance",
+        usage="osint [target] [options]"
+    )
+    parser.add_argument("target_pos", nargs="?", help="Target nomor telepon (contoh: +6281234567890)", default=None)
+    parser.add_argument("-t", "--target", help="Target nomor telepon (opsional jika menggunakan positional argument)", default=None)
+    parser.add_argument("-c", "--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
+    args = parser.parse_args()
     
-    phone = sys.argv[1].strip()
-    framework = OSINTFramework()
-    result = await framework.run_full_osint(phone)
+    orchestrator = PATRICTOrchestrator(config_path=args.config)
     
-    # CETAK HASIL SINGKAT
-    print("\n[+] HASIL OSINT")
-    print(f"  NOMOR: {result['phone']}")
-    print(f"  LOKASI: {result['location']}")
-    print(f"  EMAIL: {result['emails']}")
-    print(f"  SOSMED: {result['social_accounts']}")
-    print(f"  NETWORK: {result['network_details']}")
-    print(f"  WEB HISTORY: {result['web_history']}")
-    print(f"\n[+] LAPORAN LENGKAP: {result['report_path']}")
+    target = args.target_pos or args.target
+    if not target:
+        orchestrator.print_banner()
+        print("[+] Mode Interaktif PATRICT-OSINT\n")
+        try:
+            target = input("[?] Masukkan Nomor Telepon Target (contoh: +6281234567890): ").strip()
+        except EOFError:
+            target = ""
+            
+        if not target:
+            print("\n[!] Error: Nomor telepon target tidak boleh kosong.")
+            sys.exit(1)
+        print("")
+        
+    await orchestrator.run(target)
+
+def main():
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        print("\n[!] Dibatalkan oleh pengguna.")
+        sys.exit(0)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
-# ============================================================
-# AKHIR FILE main.py - TOTAL 430 BARIS
-# ============================================================
+    main()
