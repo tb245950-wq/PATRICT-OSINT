@@ -18,6 +18,10 @@ class SocialOSINT(BaseOSINTModule):
 
     def _load_signatures(self) -> List[Dict[str, Any]]:
         sig_path = "data/social_signatures.json"
+        if not os.path.exists(sig_path):
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            sig_path = os.path.join(base_dir, "data", "social_signatures.json")
+
         if os.path.exists(sig_path):
             try:
                 with open(sig_path, "r", encoding="utf-8") as f:

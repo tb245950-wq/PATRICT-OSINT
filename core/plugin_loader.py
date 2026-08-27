@@ -22,18 +22,25 @@ class PluginLoader:
     def discover_and_load(self) -> List[BaseOSINTModule]:
         self.loaded_modules = []
         
-        if not os.path.exists(self.modules_dir):
-            print(f"[!] Warning: Direktori modul '{self.modules_dir}' tidak ditemukan.")
+        target_dir = self.modules_dir
+        if not os.path.isabs(target_dir) and not os.path.exists(target_dir):
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            candidate = os.path.join(base_dir, target_dir)
+            if os.path.exists(candidate):
+                target_dir = candidate
+
+        if not os.path.exists(target_dir):
+            print(f"[!] Warning: Direktori modul '{target_dir}' tidak ditemukan.")
             return []
             
-        abs_modules_dir = os.path.abspath(self.modules_dir)
+        abs_modules_dir = os.path.abspath(target_dir)
         if abs_modules_dir not in sys.path:
             sys.path.insert(0, abs_modules_dir)
             
-        for file in sorted(os.listdir(self.modules_dir)):
+        for file in sorted(os.listdir(abs_modules_dir)):
             if file.endswith(".py") and not file.startswith("__"):
                 module_name = file[:-3]
-                file_path = os.path.join(self.modules_dir, file)
+                file_path = os.path.join(abs_modules_dir, file)
                 
                 try:
                     spec = importlib.util.spec_from_file_location(f"modules.{module_name}", file_path)

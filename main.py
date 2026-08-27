@@ -17,25 +17,45 @@ from core.plugin_loader import PluginLoader
 from visualizers.graph_engine import GraphEngine
 from reports.report_generator import ReportGenerator
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 class PATRICTOrchestrator:
     """
     Main Orchestrator for PATRICT-OSINT Framework.
     Mengatur konfigurasi, plugin loader dinamis, eksekusi async, graf relasi, dan pelaporan.
     """
     
-    def __init__(self, config_path: str = "config/config.yaml"):
+    def __init__(self, config_path: str = None):
+        if config_path is None:
+            default_cfg = os.path.join(BASE_DIR, "config", "config.yaml")
+            if not os.path.exists(default_cfg):
+                default_cfg = os.path.join(BASE_DIR, "config", "config.example.yaml")
+            config_path = default_cfg
+        elif not os.path.isabs(config_path) and not os.path.exists(config_path):
+            candidate = os.path.join(BASE_DIR, config_path)
+            if os.path.exists(candidate):
+                config_path = candidate
+
         self.config_manager = ConfigManager(config_path)
         self.output_dir = self.config_manager.get("app.output_dir", "./output")
         os.makedirs(self.output_dir, exist_ok=True)
         
         self.async_client = AsyncHttpClient(self.config_manager)
+        
+        modules_dir = os.path.join(BASE_DIR, "modules")
+        if not os.path.exists(modules_dir):
+            modules_dir = "modules"
+            
         self.plugin_loader = PluginLoader(
-            modules_dir="modules",
+            modules_dir=modules_dir,
             config=self.config_manager,
             async_client=self.async_client
         )
         self.graph_engine = GraphEngine(self.output_dir)
-        self.report_generator = ReportGenerator(self.output_dir)
+        self.report_generator = ReportGenerator(
+            output_dir=self.output_dir,
+            template_dir=os.path.join(BASE_DIR, "reports", "templates")
+        )
 
     def print_banner(self):
         print(r"""
@@ -50,8 +70,9 @@ class PATRICTOrchestrator:
 ===================================================================
         """)
 
-    async def run(self, target_phone: str) -> Dict[str, Any]:
-        self.print_banner()
+    async def run(self, target_phone: str, show_banner: bool = True) -> Dict[str, Any]:
+        if show_banner:
+            self.print_banner()
         print(f"[*] Target Reconnaissance : {target_phone}")
         print(f"[*] Waktu Mulai          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
         print(f"[*] Memuat Modul Dinamis...")
@@ -140,8 +161,9 @@ async def main_async():
             print("\n[!] Error: Nomor telepon target tidak boleh kosong.")
             sys.exit(1)
         print("")
-        
-    await orchestrator.run(target)
+        await orchestrator.run(target, show_banner=False)
+    else:
+        await orchestrator.run(target, show_banner=True)
 
 def main():
     try:

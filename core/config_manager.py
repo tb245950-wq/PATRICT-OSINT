@@ -54,6 +54,22 @@ class ConfigManager:
     }
     
     def __init__(self, config_path: str = "config/config.yaml", env_path: str = ".env"):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        if config_path and not os.path.isabs(config_path) and not os.path.exists(config_path):
+            candidate = os.path.join(base_dir, config_path)
+            if os.path.exists(candidate):
+                config_path = candidate
+            else:
+                example_candidate = os.path.join(base_dir, "config", "config.example.yaml")
+                if os.path.exists(example_candidate):
+                    config_path = example_candidate
+                    
+        if env_path and not os.path.isabs(env_path) and not os.path.exists(env_path):
+            candidate_env = os.path.join(base_dir, env_path)
+            if os.path.exists(candidate_env):
+                env_path = candidate_env
+
         self.config_path = config_path
         self.env_path = env_path
         
