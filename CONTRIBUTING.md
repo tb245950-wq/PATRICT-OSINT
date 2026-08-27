@@ -206,4 +206,12 @@ Jika Anda menemukan *bug* atau memiliki ide perbaikan/fitur baru:
 Framework PATRICT-OSINT dikembangkan hanya untuk **tujuan edukasi, riset keamanan siber, dan analisis data intelijen sumber terbuka (OSINT) yang sah secara hukum**. Segala bentuk penggunaan untuk tindakan ilegal, pelanggaran privasi, atau pelecehan berada di luar tanggung jawab pengembang dan kontributor proyek ini.
 
 ---
+
+## 💬 Diskusi & Komunitas Discord
+
+Ingin berdiskusi mengenai ide fitur baru, arsitektur modul, atau butuh bantuan saat berkontribusi?
+Bergabunglah bersama komunitas pengembang kami di Discord:
+👉 **[Server Discord PATRICT-OSINT](https://discord.gg/snGDCZT2E)**
+
+---
 Terima kasih telah berkontribusi dan membuat **PATRICT-OSINT** menjadi lebih baik! 🚀

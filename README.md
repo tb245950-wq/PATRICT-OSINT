@@ -21,6 +21,7 @@
 [![Build Status](https://img.shields.io/badge/GitHub%20Actions-Pre--release-orange.svg?style=flat&logo=githubactions)](https://github.com/tb245950-wq/PATRICT-OSINT/actions)
 [![Architecture](https://img.shields.io/badge/Architecture-Modular%20Monorepo-purple.svg?style=flat)](#-arsitektur--struktur-proyek)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=flat)](CONTRIBUTING.md)
+[![Discord Community](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/snGDCZT2E)
 
 </div>
 
@@ -297,6 +298,7 @@ Setiap sesi pemindaian akan menghasilkan berkas intelijen di folder `./output/`:
 
 Kami sangat menyambut kontribusi dari komunitas sumber terbuka!
 
+- 💬 [Komunitas Discord](https://discord.gg/snGDCZT2E) — Bergabunglah ke server Discord kami untuk diskusi, tanya jawab, kolaborasi, dan koordinasi kontribusi.
 - 📘 [Panduan Kontribusi (CONTRIBUTING.md)](CONTRIBUTING.md) — Alur kerja git branch, standar kode, dan cara menambahkan modul baru.
 - 🛡️ [Kebijakan Keamanan (SECURITY.md)](SECURITY.md) — Prosedur pelaporan celah keamanan dan *responsible disclosure*.
 - 📜 [Lisensi Proyek (LICENSE)](LICENSE) — Lisensi lisensi terbuka MIT.
