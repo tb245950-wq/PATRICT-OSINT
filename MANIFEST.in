@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include data *.json
+recursive-include reports/templates *.html
+recursive-include config *.yaml *.yml
