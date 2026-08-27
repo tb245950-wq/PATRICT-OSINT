@@ -1,0 +1,104 @@
+name: Build & Pre-release Package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Tandai sebagai Pre-release'
+        required: true
+        default: true
+        type: boolean
+      version_tag:
+        description: 'Tag Versi (contoh: v2.0.0-rc.1, kosongkan untuk otomatis)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-release:
+    name: Build Python Package & Create Pre-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Build Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools
+          pip install -r requirements.txt
+
+      - name: Build Distribution Packages (sdist & wheel)
+        run: |
+          python -m build
+          ls -la dist/
+
+      - name: Test Package Installation
+        run: |
+          pip install dist/*.whl
+          osint --help
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: patrict-osint-dist
+          path: dist/
+
+      - name: Publish Pre-release to GitHub Releases
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Tentukan versi tag
+          if [ -n "${{ github.event.inputs.version_tag }}" ]; then
+            TAG_NAME="${{ github.event.inputs.version_tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG_NAME="${{ github.ref_name }}"
+          else
+            TAG_NAME="v2.0.0-pre.1"
+          fi
+
+          echo "Menggunakan Tag: $TAG_NAME"
+
+          # Hapus release lama jika tag sudah ada agar rilis selalu mutakhir
+          gh release view "$TAG_NAME" && gh release delete "$TAG_NAME" --yes --cleanup-tag || true
+
+          # Buat GitHub Release dengan status Pre-release
+          gh release create "$TAG_NAME" dist/* \
+            --title "PATRICT-OSINT $TAG_NAME (Pre-release)" \
+            --notes "## 🚀 PATRICT-OSINT $TAG_NAME (Pre-release)
+
+Automated Python package build for **PATRICT-OSINT Framework v2.0**.
+
+### 📦 Package Artifacts Included:
+- **Wheel**: \`patrict_osint-2.0.0-py3-none-any.whl\`
+- **Source**: \`patrict_osint-2.0.0.tar.gz\`
+
+### 💻 Installation via Wheel:
+\`\`\`bash
+# Download the .whl asset and install
+pip install patrict_osint-2.0.0-py3-none-any.whl
+
+# Run global CLI
+osint --help
+\`\`\`
+
+---
+*Built automatically via GitHub Actions.*" \
+            --prerelease
