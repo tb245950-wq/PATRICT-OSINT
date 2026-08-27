@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PATRICT-OSINT Intelligence Report: {{ target }}</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#0B0F19',
+                        cardbg: '#111827',
+                        bordercolor: '#1F2937',
+                        accent: '#3B82F6',
+                        accenthover: '#2563EB',
+                        neoncyan: '#06B6D4',
+                        neongreen: '#10B981',
+                        neonpurple: '#8B5CF6',
+                        neonred: '#EF4444'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .glass-panel { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(8px); }
+    </style>
+</head>
+<body class="bg-darkbg text-gray-100 min-h-screen">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-bordercolor glass-panel sticky top-0 z-50 px-6 py-4 flex flex-wrap justify-between items-center shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-satellite-dish text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-wider bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">PATRICT-OSINT</h1>
+                <p class="text-xs text-gray-400 font-mono">AUTOMATED INTELLIGENCE RECONNAISSANCE</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+            <span class="px-3 py-1 bg-blue-900/40 border border-blue-500/40 text-blue-300 text-xs rounded-full font-mono">
+                <i class="fa-solid fa-clock mr-1"></i> {{ timestamp }}
+            </span>
+            <span class="px-3 py-1 bg-emerald-900/40 border border-emerald-500/40 text-emerald-300 text-xs rounded-full font-mono">
+                <i class="fa-solid fa-shield-halved mr-1"></i> Status: COMPLETED
+            </span>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        <!-- Target Overview Banner -->
+        <section class="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 border border-bordercolor rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+            <div class="absolute -right-10 -bottom-10 opacity-10 text-gray-500 text-9xl">
+                <i class="fa-solid fa-crosshairs"></i>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
+                <div class="md:col-span-1 border-r border-bordercolor/60 pr-6">
+                    <p class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-1">Target Phone Number</p>
+                    <h2 class="text-2xl font-mono font-bold text-cyan-400">{{ target }}</h2>
+                    <p class="text-xs text-gray-500 mt-2 font-mono"><i class="fa-solid fa-fingerprint mr-1"></i> ID: {{ target_id }}</p>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <div class="p-3 bg-cyan-950/60 border border-cyan-800 rounded-xl text-cyan-400">
+                        <i class="fa-solid fa-tower-cell text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-400 uppercase">Provider / Carrier</p>
+                        <p class="text-base font-semibold text-gray-200">{{ phone_info.carrier or 'Unknown' }}</p>
+                        <p class="text-xs text-gray-400">{{ phone_info.country or 'Unknown' }} ({{ phone_info.type or 'Mobile' }})</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div class="p-3 bg-purple-950/60 border border-purple-800 rounded-xl text-purple-400">
+                        <i class="fa-solid fa-share-nodes text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-400 uppercase">Sosmed Terdeteksi</p>
+                        <p class="text-2xl font-bold font-mono text-purple-400">{{ social_accounts|length }}</p>
+                        <p class="text-xs text-gray-400">Platform Terhubung</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div class="p-3 bg-amber-950/60 border border-amber-800 rounded-xl text-amber-400">
+                        <i class="fa-solid fa-magnifying-glass text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-400 uppercase">Dorking Results</p>
+                        <p class="text-2xl font-bold font-mono text-amber-400">{{ dorking_findings|length }}</p>
+                        <p class="text-xs text-gray-400">Jejak Publik Terindeks</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Visualizers Grid (Map & Relationship Graph) -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            <!-- Relationship Graph Card -->
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-diagram-project text-cyan-400 text-lg"></i>
+                        <h3 class="text-lg font-bold text-gray-200">Interactive Relationship Graph</h3>
+                    </div>
+                    {% if graph_file %}
+                    <a href="{{ graph_file }}" target="_blank" class="text-xs px-3 py-1 bg-cyan-900/30 border border-cyan-500/40 text-cyan-300 rounded-lg hover:bg-cyan-900/60 transition">
+                        <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Buka Layar Penuh
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="w-full h-80 rounded-xl bg-gray-950 border border-gray-800 overflow-hidden relative">
+                    {% if graph_file %}
+                    <iframe src="{{ graph_file }}" class="w-full h-full border-0"></iframe>
+                    {% else %}
+                    <div class="flex flex-col items-center justify-center h-full text-gray-500">
+                        <i class="fa-solid fa-circle-nodes text-4xl mb-2"></i>
+                        <p class="text-sm">Graf visualisasi tidak dibuat</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Geolocation Map Card -->
+            <div class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-map-location-dot text-emerald-400 text-lg"></i>
+                        <h3 class="text-lg font-bold text-gray-200">Geospatial Intelligence Map</h3>
+                    </div>
+                    {% if map_file %}
+                    <a href="{{ map_file }}" target="_blank" class="text-xs px-3 py-1 bg-emerald-900/30 border border-emerald-500/40 text-emerald-300 rounded-lg hover:bg-emerald-900/60 transition">
+                        <i class="fa-solid fa-arrow-up-right-from-square mr-1"></i> Buka Peta Penuh
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="w-full h-80 rounded-xl bg-gray-950 border border-gray-800 overflow-hidden relative">
+                    {% if map_file %}
+                    <iframe src="{{ map_file }}" class="w-full h-full border-0"></iframe>
+                    {% else %}
+                    <div class="flex flex-col items-center justify-center h-full text-gray-500">
+                        <i class="fa-solid fa-map text-4xl mb-2"></i>
+                        <p class="text-sm">Peta koordinat tidak tersedia</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Search Engine Dorking Intelligence Section -->
+        <section class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl space-y-4">
+            <div class="flex justify-between items-center border-b border-gray-800 pb-4">
+                <div class="flex items-center space-x-3">
+                    <i class="fa-solid fa-globe text-amber-400 text-xl"></i>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-200">Search Engine Dorking Intelligence</h3>
+                        <p class="text-xs text-gray-400">Jejak nomor telepon yang terindeks secara publik di search engine (Marketplace, Dokumen, Sosmed, Forum)</p>
+                    </div>
+                </div>
+                <span class="text-xs px-3 py-1 bg-amber-950/60 border border-amber-800 text-amber-300 rounded-full font-mono">
+                    Mode: {{ dorking_data.mode or 'Free Web Scraper' }}
+                </span>
+            </div>
+
+            {% if dorking_findings %}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                {% for item in dorking_findings %}
+                <div class="p-4 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-amber-500/40 transition space-y-2">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-700/60 text-amber-300">
+                            {{ item.category or 'General' }}
+                        </span>
+                        <span class="text-xs text-gray-500 font-mono">{{ item.engine }}</span>
+                    </div>
+                    <a href="{{ item.url }}" target="_blank" class="text-sm font-semibold text-blue-400 hover:underline block truncate">
+                        {{ item.title }}
+                    </a>
+                    {% if item.snippet %}
+                    <p class="text-xs text-gray-300 line-clamp-2 font-sans">{{ item.snippet }}</p>
+                    {% endif %}
+                    <p class="text-[11px] text-gray-500 truncate font-mono"><i class="fa-solid fa-link mr-1"></i> {{ item.url }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-6 text-gray-500 text-xs font-mono">
+                <i class="fa-solid fa-circle-info text-xl mb-2 block"></i>
+                Tidak ada jejak pencarian publik langsung yang terindeks untuk nomor ini.
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Detailed Reconnaissance Tabs -->
+        <section class="bg-cardbg border border-bordercolor rounded-2xl p-6 shadow-xl">
+            <h3 class="text-lg font-bold text-gray-200 mb-6 flex items-center">
+                <i class="fa-solid fa-layer-group text-blue-400 mr-2"></i> Rincian Hasil Temuan per Modul
+            </h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                
+                <!-- Social Media Accounts Card -->
+                <div class="border border-bordercolor/80 rounded-xl p-5 bg-gray-900/40">
+                    <h4 class="text-sm font-semibold uppercase text-purple-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-users-viewfinder mr-2"></i> Media Sosial & Platform
+                    </h4>
+                    {% if social_accounts %}
+                    <div class="space-y-3 max-h-64 overflow-y-auto pr-2">
+                        {% for item in social_accounts %}
+                        <div class="flex items-center justify-between p-3 rounded-lg bg-gray-900 border border-gray-800 hover:border-purple-500/40 transition">
+                            <div class="flex items-center space-x-3">
+                                <span class="text-lg">{{ item.icon or '🌐' }}</span>
+                                <div>
+                                    <p class="text-sm font-semibold text-gray-200">{{ item.platform }}</p>
+                                    <p class="text-xs text-gray-400 font-mono">{{ item.category or 'Social' }}</p>
+                                </div>
+                            </div>
+                            <a href="{{ item.url }}" target="_blank" class="text-xs text-cyan-400 hover:underline">
+                                <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-gray-500 font-mono">Tidak ada akun publik yang ditemukan.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Email Intel Card -->
+                <div class="border border-bordercolor/80 rounded-xl p-5 bg-gray-900/40">
+                    <h4 class="text-sm font-semibold uppercase text-amber-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-at mr-2"></i> Email Terkait & Data Breach
+                    </h4>
+                    {% if emails %}
+                    <div class="space-y-3 max-h-64 overflow-y-auto pr-2">
+                        {% for em in emails %}
+                        <div class="p-3 rounded-lg bg-gray-900 border border-gray-800">
+                            <div class="flex justify-between items-center">
+                                <p class="text-sm font-mono text-amber-300 font-semibold">{{ em.email if em.email is defined else em }}</p>
+                                <span class="text-xs px-2 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-400">
+                                    {{ em.source if em.source is defined else 'OSINT' }}
+                                </span>
+                            </div>
+                            {% if em.name %}
+                            <p class="text-xs text-gray-400 mt-1"><i class="fa-solid fa-user mr-1"></i> {{ em.name }}</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-gray-500 font-mono">Tidak ada email terhubung.</p>
+                    {% endif %}
+                </div>
+
+                <!-- Network Intelligence Card -->
+                <div class="border border-bordercolor/80 rounded-xl p-5 bg-gray-900/40">
+                    <h4 class="text-sm font-semibold uppercase text-blue-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-network-wired mr-2"></i> Network & DNS Intelligence
+                    </h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between py-1 border-b border-gray-800">
+                            <span class="text-gray-400 text-xs">Public IP:</span>
+                            <span class="font-mono text-cyan-300 text-xs">{{ network_info.public_ip or 'N/A' }}</span>
+                        </div>
+                        <div class="flex justify-between py-1 border-b border-gray-800">
+                            <span class="text-gray-400 text-xs">DNS Servers:</span>
+                            <span class="font-mono text-gray-300 text-xs">{{ network_info.dns_servers|join(', ') if network_info.dns_servers else 'Default' }}</span>
+                        </div>
+                        <div class="flex justify-between py-1 border-b border-gray-800">
+                            <span class="text-gray-400 text-xs">Gateway:</span>
+                            <span class="font-mono text-gray-300 text-xs">{{ network_info.gateway or 'N/A' }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Web Footprint Card -->
+                <div class="border border-bordercolor/80 rounded-xl p-5 bg-gray-900/40">
+                    <h4 class="text-sm font-semibold uppercase text-pink-400 mb-4 flex items-center">
+                        <i class="fa-solid fa-globe mr-2"></i> Web & Domain Presence
+                    </h4>
+                    {% if web_history %}
+                    <div class="space-y-2 max-h-64 overflow-y-auto pr-2">
+                        {% for dom in web_history %}
+                        <div class="flex justify-between items-center p-2 rounded bg-gray-900 text-xs">
+                            <span class="font-mono text-pink-300">{{ dom.domain if dom.domain is defined else dom }}</span>
+                            <span class="text-gray-500">{{ dom.status if dom.status is defined else 'Active' }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-gray-500 font-mono">Tidak ada domain terkait yang tercatat.</p>
+                    {% endif %}
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Footer Disclaimer -->
+        <footer class="border-t border-bordercolor pt-6 text-center text-xs text-gray-500 font-mono">
+            <p>Generated automatically by <span class="text-cyan-400 font-bold">PATRICT-OSINT Framework v2.0.0</span></p>
+            <p class="mt-1 text-gray-600">Disclaimer: Laporan ini hanya untuk tujuan edukasi dan riset intelijen sumber terbuka.</p>
+        </footer>
+
+    </main>
+
+</body>
+</html>
