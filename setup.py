@@ -1,0 +1,32 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="patrict-osint",
+    version="2.0.0",
+    description="Modular Monorepo OSINT Framework",
+    author="Muhammad Mughni",
+    py_modules=["main"],
+    packages=find_packages(),
+    install_requires=[
+        "phonenumbers>=8.13.0",
+        "geopy>=2.4.0",
+        "folium>=0.15.0",
+        "beautifulsoup4>=4.12.0",
+        "dnspython>=2.4.0",
+        "aiohttp>=3.9.0",
+        "pyyaml>=6.0.0",
+        "jinja2>=3.1.0",
+        "networkx>=3.2.0",
+        "pyvis>=0.3.2",
+        "requests>=2.31.0",
+        "python-dotenv>=1.0.0"
+    ],
+    entry_points={
+        "console_scripts": [
+            "osint=main:main",
+            "patrict=main:main",
+            "patrict-osint=main:main"
+        ],
+    },
+    python_requires=">=3.8",
+)
