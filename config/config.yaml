@@ -1,0 +1,49 @@
+# ============================================================
+# PATRICT-OSINT CONFIGURATION FILE
+# ============================================================
+
+app:
+  name: "PATRICT-OSINT Framework"
+  version: "2.2.0"
+  timeout: 10
+  max_concurrency: 25
+  rotate_user_agent: true
+  output_dir: "./output"
+
+# Pengaturan Modul (True = Aktif, False = Nonaktif)
+modules:
+  phone_osint: true
+  location_osint: true
+  caller_id_osint: true
+  whatsapp_osint: true
+  social_osint: true
+  dorking_osint: true
+  email_osint: true
+  network_osint: true
+  web_history: true
+
+# Pengaturan Proxy (Opsional untuk scraping anonim)
+proxy:
+  enabled: false
+  http_proxy: ""
+  socks5_proxy: ""
+
+# Pengaturan Ekspor Laporan
+reporting:
+  generate_json: true
+  generate_csv: true
+  generate_html: true
+  generate_graph: true
+  theme: "dark"
+
+# API Keys (Opsional)
+api_keys:
+  truecaller_auth_token: ""
+  serper: ""
+  serpapi: ""
+  numverify: ""
+  abstractapi: ""
+  veriphone: ""
+  haveibeenpwned: ""
+  leakcheck: ""
+  dehashed: ""
