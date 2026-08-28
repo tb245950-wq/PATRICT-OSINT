@@ -286,6 +286,21 @@ Setiap domain menghasilkan laporan yang disesuaikan di folder `./output/`:
 
 ---
 
+---
+
+## 👨‍💻 Pembuat & Pengembang (Author & Creator)
+
+Proyek **PATRICT-OSINT** diciptakan, dirancang, dan dikembangkan oleh:
+
+* **Nama Pengembang / Creator**: **Muhammad Mughni**
+* **GitHub**: [@tb245950-wq](https://github.com/tb245950-wq)
+* **Paket Resmi PyPI**: [patrict-osint](https://pypi.org/project/patrict-osint/)
+* **Komunitas Riset**: [Discord Server PATRICT](https://discord.gg/snGDCZT2E)
+
+> **Tentang Pembuat**: Muhammad Mughni adalah peneliti keamanan siber dan pengembang perangkat lunak sumber terbuka (*open-source software developer*) yang berfokus pada otomatisasi intelijen ancaman (*threat intelligence*), OSINT investigatif, dan forensik digital.
+
+---
+
 ## ⚠️ Disclaimer & Etika
 
 > **PENTING**: Framework **PATRICT-OSINT** dikembangkan secara khusus untuk tujuan penelitian keamanan informasi, edukasi, investigasi pertahanan (*defensive reconnaissance*), dan analisis intelijen yang sah (*authorized OSINT analysis*).

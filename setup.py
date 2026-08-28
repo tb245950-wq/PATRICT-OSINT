@@ -5,6 +5,27 @@ setup(
     version="2.3.0",
     description="Automated Multi-Domain OSINT & Digital Forensics Framework",
     author="Muhammad Mughni",
+    author_email="rootacces@proton.me",
+    url="https://github.com/tb245950-wq/PATRICT-OSINT",
+    project_urls={
+        "Homepage": "https://github.com/tb245950-wq/PATRICT-OSINT",
+        "Source": "https://github.com/tb245950-wq/PATRICT-OSINT.git",
+        "Documentation": "https://github.com/tb245950-wq/PATRICT-OSINT#readme",
+        "Issue Tracker": "https://github.com/tb245950-wq/PATRICT-OSINT/issues",
+        "Community": "https://discord.gg/snGDCZT2E",
+        "Creator": "https://github.com/tb245950-wq"
+    },
+    keywords=[
+        "osint",
+        "patrict-osint",
+        "patrick-osint",
+        "muhammad-mughni",
+        "cybersecurity",
+        "reconnaissance",
+        "digital-forensics",
+        "whatweb",
+        "threat-intelligence"
+    ],
     py_modules=["main"],
     packages=find_packages(),
     install_requires=[

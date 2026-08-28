@@ -8,7 +8,19 @@ version = "2.3.0"
 description = "Automated Multi-Domain OSINT & Digital Forensics Framework"
 readme = "README.md"
 requires-python = ">=3.8"
-authors = [{ name = "Muhammad Mughni" }]
+authors = [{ name = "Muhammad Mughni", email = "rootacces@proton.me" }]
+keywords = [
+    "osint",
+    "patrict-osint",
+    "patrick-osint",
+    "muhammad-mughni",
+    "reconnaissance",
+    "cybersecurity",
+    "digital-forensics",
+    "threat-intelligence",
+    "whatweb",
+    "security-headers"
+]
 dependencies = [
     "phonenumbers>=8.13.0",
     "geopy>=2.4.0",
@@ -25,7 +37,16 @@ dependencies = [
     "pillow>=10.0.0"
 ]
 
+[project.urls]
+Homepage = "https://github.com/tb245950-wq/PATRICT-OSINT"
+Repository = "https://github.com/tb245950-wq/PATRICT-OSINT.git"
+Documentation = "https://github.com/tb245950-wq/PATRICT-OSINT#readme"
+"Bug Tracker" = "https://github.com/tb245950-wq/PATRICT-OSINT/issues"
+"Discord Community" = "https://discord.gg/snGDCZT2E"
+"Author Profile" = "https://github.com/tb245950-wq"
+
 [project.scripts]
 osint = "main:main"
 patrict = "main:main"
 patrict-osint = "main:main"
+
