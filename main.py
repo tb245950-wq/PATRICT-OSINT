@@ -593,8 +593,9 @@ async def main_async():
     
     orchestrator = PATRICTOrchestrator(config_path=args.config, timeout=args.timeout)
     
-    target = args.target_pos or args.target
+    raw_target = args.target_pos or args.target
     mode = args.mode
+    is_interactive = not raw_target
     
     # Parse module filter jika ada
     module_filter = None
@@ -602,65 +603,105 @@ async def main_async():
         module_filter = [m.strip() for m in args.modules.split(",") if m.strip()]
     
     EXIT_KEYWORDS = {"exit", "quit", "q", ":q", "keluar", "stop", "bye", "cancel", "0"}
-    
-    if not target:
-        orchestrator.print_banner()
-        
-        MENU_OPTIONS = [
-            "Phone Intelligence",
-            "Web & Tech Recon",
-            "Media & File Forensics",
-            "Keluar"
-        ]
-        
-        selected_idx = select_menu_interactive(MENU_OPTIONS)
-        
-        if selected_idx == 3 or selected_idx < 0:
-            print("\n[*] Keluar dari PATRICT-OSINT.")
-            sys.exit(0)
-            
-        mode_map = {0: "phone", 1: "web", 2: "file"}
-        mode = mode_map.get(selected_idx, "phone")
-        
-        try:
-            target = input(f"\n{YELLOW}[?]{RESET} Masukkan Target: ").strip()
-        except EOFError:
-            target = ""
-            
-    if not target:
-        print("\n[!] Error: Target tidak boleh kosong.")
-        sys.exit(1)
+    HELP_KEYWORDS = {"-help", "--help", "-h", "help", "?", "menu", "--h"}
+    BACK_KEYWORDS = {"back", "kembali", "b"}
 
-    if target.lower() in EXIT_KEYWORDS:
-        print("\n[*] Keluar dari PATRICT-OSINT.")
-        sys.exit(0)
+    target = raw_target
 
-    # Deteksi mode otomatis jika belum ditentukan
-    if not mode:
-        mode = detect_target_type(target)
-
-    # Validasi dan normalisasi per mode
-    if mode == "phone":
-        digits = re.sub(r"\D", "", target)
-        if not digits or len(digits) < 5:
-            print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
-            sys.exit(1)
-
-        if target.startswith("08"):
-            target = "+62" + target[1:]
-        elif target.startswith("62") and not target.startswith("+"):
-            target = "+" + target
-        elif not target.startswith("+") and digits:
-            target = "+" + digits
+    while True:
+        if not target and is_interactive:
+            orchestrator.print_banner()
             
-    elif mode == "web":
-        if not target.startswith("http://") and not target.startswith("https://"):
-            target = "https://" + target
+            MENU_OPTIONS = [
+                "Phone Intelligence",
+                "Web & Tech Recon",
+                "Media & File Forensics",
+                "Keluar"
+            ]
             
-    elif mode == "file":
-        if not os.path.exists(target):
-            print(f"\n[!] Error: File '{target}' tidak ditemukan di sistem.")
-            sys.exit(1)
+            selected_idx = select_menu_interactive(MENU_OPTIONS)
+            
+            if selected_idx == 3 or selected_idx < 0:
+                print("\n[*] Keluar dari PATRICT-OSINT.")
+                sys.exit(0)
+                
+            mode_map = {0: "phone", 1: "web", 2: "file"}
+            mode = mode_map.get(selected_idx, "phone")
+
+        while True:
+            if not target:
+                try:
+                    target = input(f"\n{YELLOW}[?]{RESET} Masukkan Target: ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    print("\n[*] Keluar dari PATRICT-OSINT.")
+                    sys.exit(0)
+                    
+            if not target:
+                print("\n[!] Error: Target tidak boleh kosong.")
+                continue
+
+            # Periksa keyword bantuan
+            if target.lower() in HELP_KEYWORDS:
+                print_help_menu()
+                target = None
+                continue
+
+            # Periksa keyword kembali ke menu domain
+            if target.lower() in BACK_KEYWORDS:
+                target = None
+                break
+
+            # Periksa keyword keluar
+            if target.lower() in EXIT_KEYWORDS:
+                print("\n[*] Keluar dari PATRICT-OSINT.")
+                sys.exit(0)
+
+            # Deteksi mode otomatis jika belum ditentukan
+            if not mode:
+                mode = detect_target_type(target)
+
+            # Validasi dan normalisasi per mode
+            if mode == "phone":
+                digits = re.sub(r"\D", "", target)
+                if not digits or len(digits) < 5:
+                    print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
+                    target = None
+                    if not is_interactive:
+                        sys.exit(1)
+                    continue
+
+                if target.startswith("08"):
+                    target = "+62" + target[1:]
+                elif target.startswith("62") and not target.startswith("+"):
+                    target = "+" + target
+                elif not target.startswith("+") and digits:
+                    target = "+" + digits
+                    
+            elif mode == "web":
+                clean_host = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+                if clean_host.startswith("-") or ("." not in clean_host and clean_host not in ("localhost", "127.0.0.1")):
+                    print(f"\n[!] Error: Input '{target}' bukan format URL atau domain web yang valid.")
+                    target = None
+                    if not is_interactive:
+                        sys.exit(1)
+                    continue
+
+                if not target.startswith("http://") and not target.startswith("https://"):
+                    target = "https://" + target
+                    
+            elif mode == "file":
+                if not os.path.exists(target):
+                    print(f"\n[!] Error: File '{target}' tidak ditemukan di sistem.")
+                    target = None
+                    if not is_interactive:
+                        sys.exit(1)
+                    continue
+
+            # Input valid, keluar dari loop input
+            break
+
+        if target:
+            break
 
     print("")
     await orchestrator.run(

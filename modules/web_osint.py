@@ -450,8 +450,9 @@ class WebOSINT(BaseOSINTModule):
         dns_data = self._resolve_dns(domain)
         results["dns_records"] = dns_data
 
-        server_ip = dns_data.get("A", [None])[0]
-        if not server_ip:
+        a_records = dns_data.get("A", [])
+        server_ip = a_records[0] if a_records else ""
+        if not server_ip and domain and domain != "N/A":
             try:
                 server_ip = socket.gethostbyname(domain)
             except Exception:
