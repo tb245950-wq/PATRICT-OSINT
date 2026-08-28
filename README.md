@@ -20,7 +20,6 @@
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg?style=flat&logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Muhammad%20Mughni-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/muhammad-mughni-ishfi-pratama-6759523aa)
-[![Instagram](https://img.shields.io/badge/Instagram-@mughniishfi__-E4405F?style=flat&logo=instagram&logoColor=white)](https://www.instagram.com/mughniishfi_)
 [![Discord Community](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/snGDCZT2E)
 
 </div>
@@ -293,7 +292,6 @@ Proyek **PATRICT-OSINT** diciptakan, dirancang, dan dikembangkan oleh:
 
 * **Nama Pengembang / Creator**: **Muhammad Mughni (Muhammad Mughni Ishfi Pratama)**
 * **LinkedIn**: [Muhammad Mughni Ishfi Pratama](https://www.linkedin.com/in/muhammad-mughni-ishfi-pratama-6759523aa)
-* **Instagram**: [@mughniishfi_](https://www.instagram.com/mughniishfi_)
 * **GitHub**: [@tb245950-wq](https://github.com/tb245950-wq)
 * **Paket Resmi PyPI**: [patrict-osint](https://pypi.org/project/patrict-osint/)
 * **Komunitas Riset**: [Discord Server PATRICT](https://discord.gg/snGDCZT2E)
