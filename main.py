@@ -64,7 +64,7 @@ class PATRICTOrchestrator:
         CYAN = "\033[1;36m"
         RESET = "\033[0m"
         
-        banner = f"""
+        banner = rf"""
 {BLUE}==================================================================={RESET}
 {BLUE}  ____       _  _____ ____  ___ ____ _____ {RESET}       {WHITE} ___  ____ ___ _   _ _____ {RESET}
 {BLUE} |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|{RESET}      {WHITE}/ _ \/ ___|_ _| \ | |_   _|{RESET}
