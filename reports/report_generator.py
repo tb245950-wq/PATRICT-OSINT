@@ -222,7 +222,7 @@ class ReportGenerator:
 ## 3. SSL / TLS Certificate Intelligence
 
 - **Issuer Organization:** `{ssl_info.get('issuer', {}).get('organizationName', 'N/A')}` ({ssl_info.get('issuer', {}).get('commonName', 'N/A')})
-- **Valid Until:** `{ssl_info.get('valid_until', 'N/A')}` ({ssl_info.get('days_remaining', 0)} days remaining)
+- **Valid Until:** `{ssl_info.get('valid_until', 'N/A')}` ({ssl_info.get('days_remaining') if ssl_info.get('days_remaining') is not None else 'N/A'} days remaining)
 - **TLS Protocol & Cipher:** `{ssl_info.get('tls_version', 'N/A')}` - `{ssl_info.get('cipher', 'N/A')}`
 - **Passive Subdomains Discovered (crt.sh):** `{crt_data.get('total_found', 0)} unique subdomains`
 

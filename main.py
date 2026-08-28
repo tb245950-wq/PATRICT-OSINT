@@ -249,8 +249,11 @@ class PATRICTOrchestrator:
         print(f"\n{YELLOW}[+] SERTIFIKAT SSL/TLS & ENKRIPSI:{RESET}")
         if ssl_info.get("has_ssl"):
             issuer_org = ssl_info.get("issuer", {}).get("organizationName") or ssl_info.get("issuer", {}).get("commonName") or "N/A"
-            days = ssl_info.get("days_remaining", 0)
-            exp_badge = f"{GREEN}{days} hari tersisa [VALID]{RESET}" if days > 14 else f"{RED}{days} hari tersisa [EXPIRING SOON]{RESET}"
+            days = ssl_info.get("days_remaining")
+            if days is not None:
+                exp_badge = f"{GREEN}{days} hari tersisa [VALID]{RESET}" if days > 14 else f"{RED}{days} hari tersisa [EXPIRING SOON]{RESET}"
+            else:
+                exp_badge = f"{GREEN}Sertifikat Valid (Masa berlaku aktif){RESET}"
             print(f"  * Issuer Authority  : {WHITE}{issuer_org}{RESET}")
             print(f"  * Masa Berlaku      : {WHITE}{ssl_info.get('valid_from', '-')} s/d {ssl_info.get('valid_until', '-')}{RESET}")
             print(f"  * Status Kedaluwarsa: {exp_badge}")
@@ -306,8 +309,15 @@ class PATRICTOrchestrator:
             print(f"\n{YELLOW}[+] DISCOVERY FILE & DIREKTORI SENSITIF ({len(sensitive_files)} Terdeteksi):{RESET}")
             for sf in sensitive_files:
                 sev = sf.get("severity", "INFO")
-                sev_color = RED if sev in ("CRITICAL", "HIGH") else (YELLOW if sev == "MEDIUM" else CYAN)
-                status_color = GREEN if sf.get("status") == 200 else YELLOW
+                if sev in ("CRITICAL", "HIGH"):
+                    sev_color = RED
+                elif sev == "BLOCKED":
+                    sev_color = GREEN
+                elif sev == "MEDIUM":
+                    sev_color = YELLOW
+                else:
+                    sev_color = CYAN
+                status_color = GREEN if sf.get("status") == 200 else (YELLOW if sf.get("status") in (401, 403) else WHITE)
                 print(f"  * {sev_color}[{sev : <8}]{RESET} {WHITE}{sf.get('path') : <28}{RESET} : {status_color}[{sf.get('status')}]{RESET} ({sf.get('description')}, {sf.get('size_bytes')} B)")
 
         # 6. Tech Stack ala WhatWeb

@@ -283,7 +283,7 @@
             <div class="card-header">
                 <span>🔐 SSL/TLS Certificate Intelligence</span>
                 <span class="badge {% if ssl_info.is_expired %}badge-red{% else %}badge-green{% endif %}">
-                    {% if ssl_info.has_ssl %}{{ ssl_info.days_remaining }} Hari Tersisa{% else %}No SSL{% endif %}
+                    {% if ssl_info.has_ssl %}{% if ssl_info.days_remaining is not none %}{{ ssl_info.days_remaining }} Hari Tersisa{% else %}Sertifikat Valid{% endif %}{% else %}No SSL{% endif %}
                 </span>
             </div>
             <table class="info-table">
@@ -350,8 +350,8 @@
                     {% for sf in sensitive_files %}
                     <tr>
                         <td><code>{{ sf.path }}</code></td>
-                        <td><span class="badge {% if sf.status == 200 %}badge-green{% else %}badge-yellow{% endif %}">{{ sf.status }}</span></td>
-                        <td><span class="badge {% if sf.severity == 'CRITICAL' %}badge-red{% elif sf.severity == 'HIGH' %}badge-red{% else %}badge-cyan{% endif %}">{{ sf.severity }}</span></td>
+                        <td><span class="badge {% if sf.status == 200 %}badge-green{% elif sf.status in [401, 403] %}badge-yellow{% else %}badge-cyan{% endif %}">{{ sf.status }}</span></td>
+                        <td><span class="badge {% if sf.severity in ['CRITICAL', 'HIGH'] %}badge-red{% elif sf.severity == 'BLOCKED' %}badge-green{% elif sf.severity == 'MEDIUM' %}badge-yellow{% else %}badge-cyan{% endif %}">{{ sf.severity }}</span></td>
                         <td style="font-size: 12px;">{{ sf.description }} ({{ sf.size_bytes }} B)</td>
                     </tr>
                     {% endfor %}
