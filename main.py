@@ -6,6 +6,7 @@
 
 import os
 import sys
+import re
 import asyncio
 import argparse
 from datetime import datetime, timezone
@@ -149,17 +150,42 @@ async def main_async():
     orchestrator = PATRICTOrchestrator(config_path=args.config)
     
     target = args.target_pos or args.target
-    if not target:
+    is_interactive = not target
+    
+    if is_interactive:
         orchestrator.print_banner()
         print("[+] Mode Interaktif PATRICT-OSINT\n")
         try:
-            target = input("[?] Masukkan Nomor Telepon Target (contoh: +6281234567890): ").strip()
+            target = input("[?] Masukkan Nomor Telepon Target (contoh: +6281234567890, 'exit' untuk keluar): ").strip()
         except EOFError:
             target = ""
             
-        if not target:
-            print("\n[!] Error: Nomor telepon target tidak boleh kosong.")
-            sys.exit(1)
+    if not target:
+        print("\n[!] Error: Nomor telepon target tidak boleh kosong.")
+        sys.exit(1)
+
+    # Periksa perintah keluar
+    EXIT_KEYWORDS = {"exit", "quit", "q", ":q", "keluar", "stop", "bye", "cancel"}
+    if target.lower() in EXIT_KEYWORDS:
+        print("\n[*] Keluar dari PATRICT-OSINT.")
+        sys.exit(0)
+
+    # Validasi bahwa input berisi format nomor yang masuk akal
+    digits = re.sub(r"\D", "", target)
+    if not digits or len(digits) < 5:
+        print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
+        print("    Contoh format yang didukung: +6281234567890 atau 081234567890")
+        sys.exit(1)
+
+    # Normalisasi nomor lokal (08xx -> +628xx atau 62xx -> +62xx)
+    if target.startswith("08"):
+        target = "+62" + target[1:]
+    elif target.startswith("62") and not target.startswith("+"):
+        target = "+" + target
+    elif not target.startswith("+") and digits:
+        target = "+" + digits
+
+    if is_interactive:
         print("")
         await orchestrator.run(target, show_banner=False)
     else:
