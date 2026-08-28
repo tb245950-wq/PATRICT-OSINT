@@ -15,22 +15,24 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Warna Tambahan
+WHITE='\033[1;37m'
+
 # Direktori Project
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Fungsi Menampilkan Banner
 show_banner() {
-    echo -e "${CYAN}${BOLD}"
-    cat << "BANNER"
-  ____       _  _____ ____  ___ ____ _____        ___  ____ ___ _   _ _____ 
- |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|      / _ \/ ___|_ _| \ | |_   _|
- | |_) |   / _ \ | | | |_) || | |     | |  ____ | | | \___ \| ||  \| | | |  
- |  __/   / ___ \| | |  _ < | | |___  | | |____|| |_| |___) | || |\  | | |  
- |_|     /_/   \_\_| |_| \_\___\____| |_|        \___/|____/___|_| \_| |_|  
-BANNER
-    echo -e "              ${PURPLE}PATRICT-OSINT RUNNER & CLI ENGINE v2.0${NC}"
-    echo -e "${CYAN}===================================================================${NC}\n"
+    echo -e "${BLUE}${BOLD}===================================================================${NC}"
+    echo -e "${BLUE}${BOLD}  ____       _  _____ ____  ___ ____ _____ ${NC}       ${WHITE}${BOLD} ___  ____ ___ _   _ _____ ${NC}"
+    echo -e "${BLUE}${BOLD} |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|${NC}      ${WHITE}${BOLD}/ _ \/ ___|_ _| \ | |_   _|${NC}"
+    echo -e "${BLUE}${BOLD} | |_) |   / _ \ | | | |_) || | |     | |  ${CYAN}____ ${WHITE}${BOLD}| | | \___ \| ||  \| | | |  ${NC}"
+    echo -e "${BLUE}${BOLD} |  __/   / ___ \| | |  _ < | | |___  | | ${CYAN}|____|${WHITE}${BOLD}| |_| |___) | || |\  | | |  ${NC}"
+    echo -e "${BLUE}${BOLD} |_|     /_/   \_\_| |_| \_\___\____| |_|  ${NC}      ${WHITE}${BOLD}\___/|____/___|_| \_| |_|  ${NC}"
+    echo -e "${BLUE}${BOLD}===================================================================${NC}"
+    echo -e "                        ${BLUE}${BOLD}PATRICT${WHITE}-${CYAN}OSINT ${WHITE}v2.0${NC}"
+    echo -e "${BLUE}${BOLD}===================================================================${NC}\n"
 }
 
 # Fungsi Aktivasi Virtual Environment
