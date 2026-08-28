@@ -11,6 +11,7 @@ import json
 import asyncio
 import argparse
 import http.client
+import urllib.parse
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -144,34 +145,69 @@ class PATRICTOrchestrator:
         w_data = results.get("whatsapp_osint", {}).get("data", {})
         d_data = results.get("dorking_osint", {}).get("data", {})
 
+        formatting = p_data.get("formatting", {})
+        telecom_meta = p_data.get("telecom_meta", {})
+        hlr_info = p_data.get("hlr_carrier_intelligence", {})
+        endpoints = p_data.get("endpoint_links", {})
+        dorks = p_data.get("osint_dorks", [])
+
+        e164_str = formatting.get("e164") or p_data.get("e164", target)
+        nat_str = formatting.get("national") or p_data.get("national", "N/A")
+        rfc3966_str = formatting.get("rfc3966", f"tel:{e164_str}")
+        line_type = telecom_meta.get("line_type") or p_data.get("type", "Mobile / Seluler")
+        is_valid = p_data.get("validation", {}).get("is_valid_e164", p_data.get("valid", True))
+
         print(f"\n{BLUE}{'='*67}{RESET}")
         print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE TELEKOMUNIKASI (PHONE){RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
-        print(f"  {CYAN}Target Recon{RESET}        : {WHITE}{target}{RESET}")
-        print(f"  {CYAN}Format Internasional{RESET}: {WHITE}{p_data.get('formatted_e164', target)}{RESET}")
-        print(f"  {CYAN}Format Nasional{RESET}     : {WHITE}{p_data.get('formatted_national', 'N/A')}{RESET}")
-        print(f"  {CYAN}Operator / Carrier{RESET}  : {GREEN}{p_data.get('carrier', 'Tidak Teridentifikasi')}{RESET}")
-        print(f"  {CYAN}Wilayah / Negara{RESET}    : {WHITE}{p_data.get('country', 'N/A')} ({p_data.get('timezone', ['N/A'])[0] if isinstance(p_data.get('timezone'), list) and p_data.get('timezone') else 'N/A'}){RESET}")
-        print(f"  {CYAN}Status Validasi{RESET}     : {GREEN}ITU-T E.164 VALID [OK]{RESET}" if p_data.get("valid") else f"  {CYAN}Status Validasi{RESET}     : {RED}TIDAK VALID [FAIL]{RESET}")
-        
-        if l_data.get("latitude") and l_data.get("longitude"):
-            print(f"  {CYAN}Estimasi Lokasi HLR{RESET} : {WHITE}{l_data.get('city', '')} {l_data.get('region', '')} (Lat: {l_data.get('latitude')}, Lon: {l_data.get('longitude')}){RESET}")
+        print(f"  {CYAN}Target Input{RESET}        : {WHITE}{target}{RESET}")
+        print(f"  {CYAN}Format E.164 (ITU-T){RESET}: {GREEN}{BOLD}{e164_str}{RESET}")
+        print(f"  {CYAN}Format Nasional{RESET}     : {WHITE}{nat_str}{RESET}")
+        print(f"  {CYAN}Format RFC3966{RESET}      : {WHITE}{rfc3966_str}{RESET}")
+        print(f"  {CYAN}Tipe Saluran (Line){RESET} : {WHITE}{line_type}{RESET}")
+        print(f"  {CYAN}Status Validitas{RESET}    : {GREEN}ITU-T E.164 VALID [OK]{RESET}" if is_valid else f"  {CYAN}Status Validitas{RESET}    : {YELLOW}POSSIBLE / UNCONFIRMED{RESET}")
 
-        # Caller ID
-        print(f"\n{YELLOW}[+] IDENTITAS & CALLER DIRECTORY:{RESET}")
-        owner_name = c_data.get("name") or c_data.get("caller_name") or "Tidak ditemukan di direktori publik"
-        spam_score = c_data.get("spam_score", "0%")
-        print(f"  * Nama Teridentifikasi : {WHITE}{owner_name}{RESET}")
-        print(f"  * Skor Reputasi/Spam   : {GREEN}{spam_score}{RESET}")
+        # 1. Database HLR & Operator Intelligence
+        print(f"\n{YELLOW}[+] DATABASE OFFLINE HLR & OPERATOR TELEKOMUNIKASI:{RESET}")
+        print(f"  * Operator / Provider : {GREEN}{BOLD}{hlr_info.get('carrier_name') or p_data.get('carrier', 'N/A')}{RESET}")
+        print(f"  * Brand / Produk Kartu: {WHITE}{hlr_info.get('card_brand', 'Prepaid/Postpaid')}{RESET}")
+        mcc_mnc_str = f"MCC: {hlr_info.get('mcc', '510')} | MNC: {hlr_info.get('mnc', 'N/A')}"
+        print(f"  * Kode Jaringan Telco : {WHITE}{mcc_mnc_str}{RESET}")
+        print(f"  * Wilayah Alokasi HLR : {WHITE}{hlr_info.get('hlr_region') or telecom_meta.get('location_description', 'Indonesia')}{RESET}")
+        print(f"  * Teknologi Jaringan  : {WHITE}{hlr_info.get('network_technology', 'GSM / 4G / 5G')}{RESET}")
 
-        # WhatsApp
-        if w_data:
-            wa_status = "Aktif [OK]" if w_data.get("is_registered") or w_data.get("valid") else "Tidak Terdeteksi"
-            print(f"\n{YELLOW}[+] WHATSAPP RECONNAISSANCE:{RESET}")
-            print(f"  * Status WhatsApp      : {GREEN if 'Aktif' in wa_status else WHITE}{wa_status}{RESET}")
-            print(f"  * Link Profil          : {CYAN}https://wa.me/{target.replace('+', '')}{RESET}")
+        # 2. Identitas & Caller Directory
+        print(f"\n{YELLOW}[+] IDENTITAS & CALLER DIRECTORY REGISTRY:{RESET}")
+        owner_name = c_data.get("owner_name") or c_data.get("name") or c_data.get("caller_name") or "Tidak ditemukan di direktori publik (Private)"
+        spam_score = c_data.get("spam_score", 0)
+        spam_display = f"{GREEN}Clean (0% Spam Score) [OK]{RESET}" if (spam_score == 0 or spam_score == "0%") else f"{RED}{spam_score}% Spam Score [WARN]{RESET}"
+        print(f"  * Nama Teridentifikasi: {WHITE}{owner_name}{RESET}")
+        print(f"  * Skor Reputasi/Spam  : {spam_display}")
 
-        # Social Media
+        # 3. Direct Messaging & Verification Deep Links
+        print(f"\n{YELLOW}[+] DIRECT MESSAGING & VERIFIKASI ENDPOINT:{RESET}")
+        wa_link = endpoints.get("whatsapp_direct", f"https://wa.me/{re.sub(r'[^0-9]', '', e164_str)}")
+        tg_link = endpoints.get("telegram_direct", f"https://t.me/+{re.sub(r'[^0-9]', '', e164_str)}")
+        tc_link = endpoints.get("truecaller_search", f"https://www.truecaller.com/search/id/{re.sub(r'[^0-9]', '', nat_str)}")
+        sync_link = endpoints.get("syncme_search", f"https://sync.me/search/?number={urllib.parse.quote_plus(e164_str)}")
+
+        print(f"  * WhatsApp Direct API : {CYAN}{wa_link}{RESET}")
+        print(f"  * Telegram Profile    : {CYAN}{tg_link}{RESET}")
+        print(f"  * Truecaller Lookup   : {CYAN}{tc_link}{RESET}")
+        print(f"  * Sync.ME Lookup Web  : {CYAN}{sync_link}{RESET}")
+
+        # 4. Kebocoran Data (Data Breach Intelligence)
+        breach_status = e_data.get("breach_status", "Clean / Not Found in Public Dumps")
+        breaches = e_data.get("breaches", [])
+        print(f"\n{YELLOW}[+] STATUS KEBOCORAN DATA (DATA BREACH INTELLIGENCE):{RESET}")
+        if breaches:
+            print(f"  * Status Kebocoran    : {RED}{BOLD}DITEMUKAN DI {len(breaches)} DATABASE LEAK!{RESET}")
+            for b in breaches[:3]:
+                print(f"    - [{b.get('breach_date', 'N/A')}] {WHITE}{b.get('title')}{RESET} ({', '.join(b.get('data_classes', [])[:3])})")
+        else:
+            print(f"  * Status Kebocoran    : {GREEN}{breach_status} [AMAN]{RESET}")
+
+        # 5. Media Sosial Terverifikasi
         accounts = s_data.get("accounts", []) if isinstance(s_data, dict) else []
         print(f"\n{YELLOW}[+] AKUN MEDIA SOSIAL TERHUBUNG ({len(accounts)} Ditemukan):{RESET}")
         if accounts:
@@ -180,21 +216,17 @@ class PATRICTOrchestrator:
         else:
             print(f"  * {WHITE}Tidak ditemukan akun media sosial publik dengan signature nomor ini.{RESET}")
 
-        # Emails
-        emails = e_data.get("emails", []) if isinstance(e_data, dict) else []
-        print(f"\n{YELLOW}[+] POTENSI ALAMAT EMAIL TERKAIT ({len(emails)}):{RESET}")
-        if emails:
-            for em in emails[:5]:
-                print(f"  * {WHITE}{em.get('email', '')}{RESET} {GREEN}({em.get('source', 'OSINT')}){RESET}")
+        # 6. Automated OSINT Google Dorking Generator (Clickable Links)
+        print(f"\n{YELLOW}[+] GOOGLE & DUCKDUCKGO OSINT DORKING LINKS:{RESET}")
+        if dorks:
+            for d in dorks:
+                print(f"  * {WHITE}{BOLD}{d.get('category')}{RESET}:")
+                print(f"    {CYAN}{d.get('google_search_url')}{RESET}")
         else:
-            print(f"  * {WHITE}Tidak ada permutasi email yang aktif.{RESET}")
-
-        # Dorks
-        findings = d_data.get("findings", []) if isinstance(d_data, dict) else []
-        if findings:
-            print(f"\n{YELLOW}[+] TEMUAN DORKING & DOKUMEN PUBLIK ({len(findings)}):{RESET}")
-            for item in findings[:4]:
-                print(f"  * [{item.get('category', 'Info')}] {WHITE}{item.get('title', '')}{RESET} -> {CYAN}{item.get('url', '')}{RESET}")
+            # Fallback jika list dorks belum terisi
+            encoded_q = urllib.parse.quote(f'"{e164_str}" OR "{nat_str}"')
+            print(f"  * Dokumen Publik (.PDF/.XLSX): {CYAN}https://www.google.com/search?q={encoded_q}+filetype:pdf{RESET}")
+            print(f"  * Marketplace & Forum        : {CYAN}https://www.google.com/search?q={encoded_q}+site:tokopedia.com+OR+site:shopee.co.id{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 

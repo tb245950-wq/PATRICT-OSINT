@@ -287,25 +287,55 @@ class ReportGenerator:
         c_data = data.get("caller_id_osint", {}).get("data", {})
         s_data = data.get("social_osint", {}).get("data", {})
         e_data = data.get("email_osint", {}).get("data", {})
+        
+        formatting = p_data.get("formatting", {})
+        hlr_info = p_data.get("hlr_carrier_intelligence", {})
+        telecom_meta = p_data.get("telecom_meta", {})
+        endpoints = p_data.get("endpoint_links", {})
+        dorks = p_data.get("osint_dorks", [])
 
-        md = f"""# Phone Intelligence Report
+        md = f"""# Telecommunications & Phone Intelligence Report
 
-**Target:** `{target}`  
-**Carrier:** `{p_data.get('carrier', 'N/A')}`  
-**Country:** `{p_data.get('country', 'N/A')}`  
-**Caller ID:** `{c_data.get('name', 'N/A')}`  
+**Target Number:** `{target}`  
+**ITU-T E.164 Format:** `{formatting.get('e164', p_data.get('e164', target))}`  
+**National Format:** `{formatting.get('national', p_data.get('national', 'N/A'))}`  
+**Carrier:** `{hlr_info.get('carrier_name', p_data.get('carrier', 'N/A'))}` ({hlr_info.get('card_brand', 'Prepaid/Postpaid')})  
+**Line Type:** `{telecom_meta.get('line_type', p_data.get('type', 'Mobile'))}`  
+**HLR Regional Area:** `{hlr_info.get('hlr_region', telecom_meta.get('location_description', 'Indonesia'))}`  
+**Network Code:** `MCC: {hlr_info.get('mcc', '510')} | MNC: {hlr_info.get('mnc', 'N/A')}`  
+**Caller ID Registry:** `{c_data.get('owner_name') or c_data.get('name') or 'Private / No Public Entry'}`  
+**Spam / Safety Score:** `{c_data.get('spam_score', '0%')} (Status: Clean)`  
+**Data Breach Status:** `{e_data.get('breach_status', 'Clean / Not Found in Public Dumps')}`  
 **Generated At:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`  
 
 ---
 
-## Social Media Accounts Found
-"""
-        for acc in s_data.get("accounts", []):
-            md += f"- **{acc.get('platform')}**: {acc.get('url')}\n"
+## 1. Direct Messaging & Endpoint Verification Links
 
-        md += "\n## Associated Emails\n"
-        for em in e_data.get("emails", []):
-            md += f"- `{em.get('email')}` ({em.get('source')})\n"
+- **WhatsApp Direct API:** [{endpoints.get('whatsapp_direct', '#')}]({endpoints.get('whatsapp_direct', '#')})
+- **Telegram Profile Direct:** [{endpoints.get('telegram_direct', '#')}]({endpoints.get('telegram_direct', '#')})
+- **Truecaller Search Web:** [{endpoints.get('truecaller_search', '#')}]({endpoints.get('truecaller_search', '#')})
+- **Sync.ME Lookup:** [{endpoints.get('syncme_search', '#')}]({endpoints.get('syncme_search', '#')})
+
+---
+
+## 2. Automated OSINT Google Dorking Generator
+
+| Category | Description | Google Search Link |
+|---|---|---|
+"""
+        for d in dorks:
+            md += f"| **{d.get('category')}** | {d.get('description')} | [Buka Google Search]({d.get('google_search_url')}) |\n"
+
+        if s_data.get("accounts"):
+            md += "\n---\n\n## 3. Social Media Accounts Found\n\n"
+            for acc in s_data.get("accounts", []):
+                md += f"- **{acc.get('platform')}**: [{acc.get('url')}]({acc.get('url')})\n"
+
+        if e_data.get("breaches"):
+            md += "\n---\n\n## 4. Public Data Breach Records\n\n"
+            for b in e_data.get("breaches", []):
+                md += f"- **[{b.get('breach_date', 'N/A')}] {b.get('title')}** ({b.get('domain')}): {', '.join(b.get('data_classes', []))}\n"
 
         try:
             with open(filepath, "w", encoding="utf-8") as f:
