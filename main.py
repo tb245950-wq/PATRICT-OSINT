@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
 # PATRICT-OSINT FRAMEWORK - MONOREPO ORCHESTRATOR
-# VERSION: 2.2.0
+# VERSION: 2.3.0
 # ============================================================
 
 import os
@@ -20,7 +20,7 @@ from visualizers.graph_engine import GraphEngine
 from reports.report_generator import ReportGenerator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # ANSI Terminal Colors
 BLUE = "\033[1;34m"
@@ -214,7 +214,12 @@ class PATRICTOrchestrator:
         stack = w_data.get("tech_stack", {})
         auth = w_data.get("auth_intelligence", {})
         dns_rec = w_data.get("dns_records", {})
-        endpoints = w_data.get("interesting_endpoints", [])
+        sec_grade = w_data.get("security_headers_grade", {})
+        ssl_info = w_data.get("ssl_certificate", {})
+        crt_data = w_data.get("crtsh_subdomains", {})
+        origin_leak = w_data.get("origin_ip_leak", {})
+        sensitive_files = w_data.get("sensitive_files_found", [])
+        threat_data = w_data.get("threat_vulnerability_summary", {})
 
         print(f"\n{BLUE}{'='*67}{RESET}")
         print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE WEB & WHATWEB FINGERPRINT{RESET}")
@@ -240,7 +245,72 @@ class PATRICTOrchestrator:
         if geo.get("maps_url"):
             print(f"  * Lokasi Google Maps: {CYAN}{geo.get('maps_url')}{RESET}")
 
-        # Tech Stack ala WhatWeb
+        # 1. SSL/TLS Certificate Intelligence
+        print(f"\n{YELLOW}[+] SERTIFIKAT SSL/TLS & ENKRIPSI:{RESET}")
+        if ssl_info.get("has_ssl"):
+            issuer_org = ssl_info.get("issuer", {}).get("organizationName") or ssl_info.get("issuer", {}).get("commonName") or "N/A"
+            days = ssl_info.get("days_remaining", 0)
+            exp_badge = f"{GREEN}{days} hari tersisa [VALID]{RESET}" if days > 14 else f"{RED}{days} hari tersisa [EXPIRING SOON]{RESET}"
+            print(f"  * Issuer Authority  : {WHITE}{issuer_org}{RESET}")
+            print(f"  * Masa Berlaku      : {WHITE}{ssl_info.get('valid_from', '-')} s/d {ssl_info.get('valid_until', '-')}{RESET}")
+            print(f"  * Status Kedaluwarsa: {exp_badge}")
+            print(f"  * Protokol & Cipher : {WHITE}{ssl_info.get('tls_version', 'TLS')} - {ssl_info.get('cipher', 'N/A')}{RESET}")
+            print(f"  * SANs Terdaftar    : {WHITE}{len(ssl_info.get('san_list', []))} domain{RESET}")
+        else:
+            print(f"  * {RED}Tidak ada sertifikat SSL/TLS aktif (Port 443 tidak merespon/Plain HTTP).{RESET}")
+
+        # 2. Passive Subdomain Discovery via CT Logs (crt.sh)
+        sub_count = crt_data.get("total_found", 0)
+        print(f"\n{YELLOW}[+] SUBDOMAIN PASIF DARI CERTIFICATE TRANSPARENCY ({sub_count} Ditemukan):{RESET}")
+        if crt_data.get("unique_subdomains"):
+            sample_subs = crt_data.get("unique_subdomains", [])[:8]
+            for sub in sample_subs:
+                print(f"  * {CYAN}{sub}{RESET}")
+            if sub_count > 8:
+                print(f"  * {WHITE}... dan {sub_count - 8} subdomain lainnya (lihat file laporan JSON/MD).{RESET}")
+        else:
+            print(f"  * {WHITE}Tidak ditemukan subdomain pasif di CT logs.{RESET}")
+
+        # 3. Cloudflare / CDN Origin IP Leak Alert
+        if origin_leak.get("leak_detected"):
+            print(f"\n{RED}{BOLD}[!] PERINGATAN: POTENSI KEBOCORAN ORIGIN IP SERVER TERDETEKSI!{RESET}")
+            print(f"  * Target di balik   : {YELLOW}{origin_leak.get('cdn_provider')}{RESET}")
+            for leak in origin_leak.get("leaked_ips", []):
+                print(f"  {RED}[!] POTENTIAL ORIGIN IP LEAK: {WHITE}{BOLD}{leak.get('ip')}{RESET} {YELLOW}(Sumber: {leak.get('source')}){RESET}")
+                print(f"      Risiko          : {WHITE}{leak.get('risk')}{RESET}")
+        elif origin_leak.get("is_behind_cdn"):
+            print(f"\n{YELLOW}[+] DETEKSI CDN & CLOUDFLARE:{RESET}")
+            print(f"  * Status CDN        : {GREEN}Aktif ({origin_leak.get('cdn_provider')}){RESET}")
+            print(f"  * Kebocoran Origin  : {GREEN}Tidak ditemukan (Rapat) [OK]{RESET}")
+
+        # 4. Security Headers Grader
+        grade = sec_grade.get("grade", "N/A")
+        score = sec_grade.get("score", 0)
+        grade_color = GREEN if grade in ("A+", "A") else (CYAN if grade in ("B+", "B") else (YELLOW if grade == "C" else RED))
+        
+        print(f"\n{YELLOW}[+] SECURITY HEADERS GRADER:{RESET}")
+        print(f"  * Skor & Grade      : {grade_color}{BOLD}[ GRADE: {grade} ]{RESET} {WHITE}(Skor Keamanan: {score}/100){RESET}")
+        evals = sec_grade.get("evaluations", {})
+        for h_name, h_val in evals.items():
+            st = h_val.get("status")
+            st_badge = f"{GREEN}[PASS]{RESET}" if st == "PASS" else (f"{YELLOW}[WARN]{RESET}" if st == "WARN" else f"{RED}[FAIL]{RESET}")
+            print(f"  * {h_name : <28}: {st_badge} {WHITE}{h_val.get('score')}{RESET} - {h_val.get('details')}")
+
+        if sec_grade.get("recommendations"):
+            print(f"  {YELLOW}Rekomendasi Hardening:{RESET}")
+            for rec in sec_grade.get("recommendations")[:3]:
+                print(f"    - {WHITE}{rec}{RESET}")
+
+        # 5. Sensitive File & Directory Discovery
+        if sensitive_files:
+            print(f"\n{YELLOW}[+] DISCOVERY FILE & DIREKTORI SENSITIF ({len(sensitive_files)} Terdeteksi):{RESET}")
+            for sf in sensitive_files:
+                sev = sf.get("severity", "INFO")
+                sev_color = RED if sev in ("CRITICAL", "HIGH") else (YELLOW if sev == "MEDIUM" else CYAN)
+                status_color = GREEN if sf.get("status") == 200 else YELLOW
+                print(f"  * {sev_color}[{sev : <8}]{RESET} {WHITE}{sf.get('path') : <28}{RESET} : {status_color}[{sf.get('status')}]{RESET} ({sf.get('description')}, {sf.get('size_bytes')} B)")
+
+        # 6. Tech Stack ala WhatWeb
         print(f"\n{YELLOW}[+] STACK TEKNOLOGI & FINGERPRINTING:{RESET}")
         servers = stack.get("web_servers", [])
         langs = stack.get("programming_languages", [])
@@ -264,7 +334,7 @@ class PATRICTOrchestrator:
         if cdns:
             print(f"  * CDN / Analytics   : {WHITE}{', '.join(cdns)}{RESET}")
 
-        # Auth & Security
+        # 7. Auth & Security
         print(f"\n{YELLOW}[+] AUTHENTICATION & COOKIE SECURITY:{RESET}")
         auth_types = auth.get("auth_type_detected", ["Standard / Stateless"])
         print(f"  * Tipe Auth/Session : {WHITE}{', '.join(auth_types)}{RESET}")
@@ -275,18 +345,7 @@ class PATRICTOrchestrator:
         samesite = flags.get("samesite") or "Default"
         print(f"  * Cookie Flags      : HttpOnly: {httponly} | Secure: {secure} | SameSite: {WHITE}{samesite}{RESET}")
 
-        # Endpoints & Discovery
-        if endpoints:
-            print(f"\n{YELLOW}[+] ENDPOINT & SERVICE DISCOVERY:{RESET}")
-            for ep in endpoints:
-                print(f"  * {ep.get('name') : <18}: {GREEN}[{ep.get('status')}]{RESET} {WHITE}{ep.get('url')}{RESET}")
-
-        if meta.get("emails_found"):
-            print(f"\n{YELLOW}[+] EMAIL TERSEKRAP DARI HALAMAN:{RESET}")
-            for em in meta.get("emails_found")[:5]:
-                print(f"  * {WHITE}{em}{RESET}")
-
-        # DNS Records
+        # 8. DNS Records
         if any(dns_rec.values()):
             print(f"\n{YELLOW}[+] DNS RECORDS MATRIX:{RESET}")
             for r_type in ["A", "MX", "NS", "TXT"]:
@@ -294,11 +353,26 @@ class PATRICTOrchestrator:
                 if r_val:
                     print(f"  * {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
 
-        # Verbose Output (jika -v diaktifkan)
-        if self.verbose:
-            print(f"\n{YELLOW}[+] VERBOSE RAW SECURITY HEADERS:{RESET}")
-            for hk, hv in w_data.get("security_headers", {}).items():
-                print(f"  * {hk : <28}: {WHITE}{hv}{RESET}")
+        # 9. Executive Vulnerability & Threat Assessment Summary Matrix
+        print(f"\n{BLUE}{'='*67}{RESET}")
+        print(f"         {WHITE}{BOLD}RANGKUMAN ANCAMAN & VULNERABILITY ASSESSMENT{RESET}")
+        print(f"{BLUE}{'='*67}{RESET}")
+        threat_level = threat_data.get("overall_threat_level", "LOW")
+        tl_color = RED if threat_level in ("CRITICAL", "HIGH") else (YELLOW if threat_level == "MEDIUM" else GREEN)
+        
+        print(f"  * Tingkat Ancaman   : {tl_color}{BOLD}[ {threat_level} ]{RESET} (Risk Score: {threat_data.get('risk_score', 0)}/100)")
+        print(f"  * Total Temuan      : {WHITE}{threat_data.get('total_threats_identified', 0)} poin ancaman teridentifikasi{RESET}")
+        
+        threat_items = threat_data.get("threats", [])
+        if threat_items:
+            print(f"\n  {YELLOW}Rincian Ancaman & Mitigasi:{RESET}")
+            for idx, th in enumerate(threat_items, 1):
+                th_color = RED if th.get("severity") in ("CRITICAL", "HIGH") else (YELLOW if th.get("severity") == "MEDIUM" else CYAN)
+                print(f"  [{idx}] {th_color}[{th.get('severity')}]{RESET} {WHITE}{BOLD}{th.get('title')}{RESET} ({th.get('category')})")
+                print(f"      Dampak          : {WHITE}{th.get('impact')}{RESET}")
+                print(f"      Mitigasi        : {GREEN}{th.get('mitigation')}{RESET}")
+        else:
+            print(f"  {GREEN}[+] Konfigurasi aman, tidak ditemukan celah ancaman kritis pada scope ini.{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 
@@ -443,7 +517,7 @@ class PATRICTOrchestrator:
             if "file_forensics" in results:
                 self._print_file_terminal(target, results)
 
-        # 4. Simpan File JSON di Direktori Tempat Terminal Aktif Dijalankan
+        # 4. Simpan File JSON & Markdown Audit di Direktori Kerja
         if save_json and not brief:
             if output_file:
                 cwd_json_path = os.path.abspath(output_file)
@@ -455,21 +529,25 @@ class PATRICTOrchestrator:
                 with open(cwd_json_path, "w", encoding="utf-8") as f:
                     json.dump(results, f, indent=2, ensure_ascii=False)
                 if not self.quiet:
-                    print(f"  {GREEN}[+] File JSON tersimpan di : {WHITE}{cwd_json_path}{RESET}")
+                    print(f"  {GREEN}[+] File JSON tersimpan di     : {WHITE}{cwd_json_path}{RESET}")
             except Exception as e:
                 if not self.no_errors:
                     print(f"  [!] Gagal menyimpan file JSON di {cwd_json_path}: {e}")
 
-        # 5. Opsi Ekspor HTML jika diminta secara spesifik
-        if save_html and not brief:
+            # Buat file Markdown (.md) dan HTML
             reports = self.report_generator.generate_all_reports(
                 target=target,
                 full_data=results,
                 target_type=target_type
             )
-            html_file = reports.get("html")
-            if html_file and not self.quiet:
-                print(f"  {GREEN}[+] Laporan HTML (Opsional): {WHITE}{html_file}{RESET}")
+            md_file = reports.get("markdown")
+            if md_file and not self.quiet:
+                print(f"  {GREEN}[+] Laporan Markdown Audit     : {WHITE}{md_file}{RESET}")
+
+            if save_html:
+                html_file = reports.get("html")
+                if html_file and not self.quiet:
+                    print(f"  {GREEN}[+] Dashboard HTML Interaktif  : {WHITE}{html_file}{RESET}")
 
         return results
 

@@ -9,3 +9,6 @@ lib/
 .pytest_cache/
 dist/
 build/
+report_*.json
+report_*.csv
+report_*.md
