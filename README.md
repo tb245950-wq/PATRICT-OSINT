@@ -14,7 +14,7 @@
 
 # PATRICT-OSINT
 
-**Advanced Reconnaissance & Threat Intelligence Engine**
+**Advanced Multi-Domain Reconnaissance, Threat Intelligence & Digital Forensics Engine**
 
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg?style=flat&logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
@@ -30,7 +30,10 @@
 ## 📌 Daftar Isi
 
 - [Tentang PATRICT-OSINT](#-tentang-patrict-osint)
-- [Fitur Utama & Modul Intelijen](#-fitur-utama--modul-intelijen)
+- [Domain Penyelidikan & Modul Intelijen](#-domain-penyelidikan--modul-intelijen)
+  - [1. Phone Intelligence](#1--phone-intelligence)
+  - [2. Web & Infrastructure Reconnaissance](#2--web--infrastructure-reconnaissance)
+  - [3. Media & File Forensics](#3--media--file-forensics)
 - [Arsitektur & Struktur Proyek](#-arsitektur--struktur-proyek)
 - [Persyaratan Sistem](#-persyaratan-sistem)
 - [Panduan Instalasi](#-panduan-instalasi)
@@ -44,29 +47,48 @@
 
 ## 📖 Tentang PATRICT-OSINT
 
-**PATRICT-OSINT** adalah framework intelijen sumber terbuka (*Open Source Intelligence*) generasi baru berbasis Python dengan arsitektur **Modular Monorepo**. Dirancang untuk penyelidik keamanan siber, analis ancaman (*threat intelligence*), dan peneliti forensik digital untuk melakukan pengumpulan intelijen otomatis dan terstruktur dari target nomor telepon maupun jejak digital terkait.
+**PATRICT-OSINT** adalah framework intelijen sumber terbuka (*Open Source Intelligence*) dan forensik digital generasi baru berbasis Python dengan arsitektur **Modular Monorepo**. Dirancang untuk penyelidik keamanan siber, analis ancaman (*threat intelligence*), dan peneliti forensik digital untuk melakukan pengumpulan intelijen otomatis dan terstruktur pada 3 domain utama: **Telekomunikasi (Nomor Telepon)**, **Infrastruktur Web**, dan **Forensik Media/Gambar**.
 
-Framework ini mengadopsi sistem **Plugin Loader Dinamis** (`PluginLoader`) yang secara otomatis mendeteksi, memuat, dan mengeksekusi modul-modul analisis tanpa perlu konfigurasi hardcode, serta menghasilkan visualisasi relasi interaktif (*interactive relationship graph*) dan dashboard laporan bertema gelap (*Dark Mode*).
+Framework ini mengadopsi sistem **Plugin Loader Dinamis** (`PluginLoader`) yang secara otomatis memuat modul sesuai tipe domain penyelidikan, serta menghasilkan visualisasi relasi interaktif (*Interactive Network Graph*) dan dashboard laporan bertema gelap (*Dark Mode*) yang disesuaikan untuk masing-masing domain.
 
 ---
 
-## ⚡ Fitur Utama & Modul Intelijen
+## ⚡ Domain Penyelidikan & Modul Intelijen
 
-Framework dilengkapi dengan rangkaian modul reconnaissance independen dan terintegrasi:
+PATRICT-OSINT mendukung 3 domain penyelidikan mandiri:
+
+### 1. 📞 Phone Intelligence
+Modul reconnaissance nomor telepon internasional (ITU-T E.164) untuk mengungkap jejak pemilik, operator, dan sebaran akun media sosial:
 
 | Modul | File | Deskripsi Fungsionalitas |
 | :--- | :--- | :--- |
-| **Phone Recon** | `modules/phone_osint.py` | Parsing standar internasional E.164, validasi nomor, deteksi operator seluler (*carrier*), zona waktu, dan data geocoding dasar. |
+| **Phone Recon** | `modules/phone_osint.py` | Parsing standar internasional E.164, validasi nomor, operator (*carrier*), zona waktu, dan data geocoding dasar. |
 | **Caller ID** | `modules/caller_id_osint.py` | Resolusi identitas pemilik target, nama panggilan, skor spam, dan reputasi nomor dari berbagai direktori caller intelligence. |
 | **Geolocation** | `modules/location_osint.py` | Ekstraksi koordinat lintang/bujur (*lat/long*), reverse geocoding alamat fisik, dan pembuatan peta interaktif berbasis OpenStreetMap (*Folium*). |
-| **Social Footprint** | `modules/social_osint.py` | Pemindaian asinkron ke 20+ platform media sosial (WhatsApp, Telegram, GitHub, Instagram, Twitter/X, TikTok, Reddit, Spotify, Steam, Medium, dll) menggunakan *social signatures*. |
+| **Social Footprint** | `modules/social_osint.py` | Pemindaian asinkron ke 20+ platform media sosial (WhatsApp, Telegram, GitHub, Instagram, Twitter/X, TikTok, Reddit, Spotify, Steam, Medium, dll). |
 | **Email Discovery** | `modules/email_osint.py` | Permutasi pola email potensial berdasarkan nomor dan identitas serta verifikasi record MX domain. |
 | **WhatsApp Intel** | `modules/whatsapp_osint.py` | Verifikasi status keaktifan akun WhatsApp dan deteksi profil web signature. |
 | **Network Intel** | `modules/network_osint.py` | Resolusi DNS, Reverse DNS, query WHOIS domain terkait, IP Geolocation, dan pemetaan infrastruktur jaringan. |
 | **Web Archive** | `modules/web_history.py` | Penelusuran jejak domain historis target melalui Wayback Machine dan arsip web terbuka. |
 | **Search Dorking** | `modules/dorking_osint.py` | Pembuatan query Google/DuckDuckGo dorks otomatis untuk mengungkap kebocoran dokumen, pastebin, dan jejak database publik. |
-| **Graph Visualizer** | `visualizers/graph_engine.py` | Engine visualisasi relasi interaktif berbasis `NetworkX` dan `PyVis` yang memetakan relasi entitas target. |
-| **Report Engine** | `reports/report_generator.py` | Generator laporan multi-format: **HTML Dashboard Dark Mode**, **JSON Terstruktur**, dan **CSV Tabular**. |
+
+---
+
+### 2. 🌐 Web & Infrastructure Reconnaissance
+Modul investigasi mendalam terhadap aplikasi web dan server target:
+
+| Modul | File | Deskripsi Fungsionalitas |
+| :--- | :--- | :--- |
+| **Web Intelligence** | `modules/web_osint.py` | &bull; **HTTP Methods & Protocol**: Deteksi method yang diizinkan (`OPTIONS`, `HEAD`, `GET`, `POST`, dll) dan security headers (`HSTS`, `CSP`, `X-Frame-Options`, `CORS`).<br>&bull; **Redirect Chain Tracker**: Pelacakan jalur redirect (`301`, `302`, `307`, `308`) dari URL asal hingga tujuan akhir.<br>&bull; **Session & Auth Fingerprint**: Deteksi token `JWT` (auto-decode header & payload), cookies session (Laravel `Sanctum` / `laravel_session`, Django `sessionid`, ASP.NET, PHP `PHPSESSID`, Express `connect.sid`, Spring `JSESSIONID`, Cloudflare `cf_clearance`).<br>&bull; **Tech Stack Fingerprint**: Deteksi Web Server (Nginx, Apache, Cloudflare), Framework Backend (Laravel, Django, Node, Rails), CMS (WordPress, Drupal, Joomla, Shopify), dan Frontend (React, Vue, Tailwind, Bootstrap).<br>&bull; **DNS & GeoIP Server**: Resolusi record `A`, `AAAA`, `MX`, `NS`, `TXT`, `CNAME`, IP Publik server, koordinat latitude/longitude, ISP/Org, ASN, dan peta lokasi server. |
+
+---
+
+### 3. 🖼️ Media & File Forensics
+Modul analisis forensik berkas gambar/media (JPG, PNG, JPEG, GIF, WebP, PDF):
+
+| Modul | File | Deskripsi Fungsionalitas |
+| :--- | :--- | :--- |
+| **File Forensics** | `modules/file_forensics.py` | &bull; **Kriptografi & Integritas**: Kalkulasi hash presisi `MD5`, `SHA-1`, `SHA-256`, dan `SHA-512`.<br>&bull; **Magic Bytes Inspection**: Verifikasi signature biner asli vs ekstensi file (deteksi pemalsuan ekstensi file / *extension spoofing*).<br>&bull; **Metadata EXIF & GPS**: Ekstraksi tipe/model kamera, software editor pembuat gambar, timestamp pengambilan, dan ekstraksi koordinat GPS lokasi pemotretan ke Google Maps.<br>&bull; **Steganografi & Appended Data**: Deteksi data biner tersembunyi setelah marker *End-of-File* (`EOF` / `IEND`), deteksi arsip `ZIP` tersemat di dalam gambar, dan ekstraksi string ASCII menarik (URL, email, token, password). |
 
 ---
 
@@ -87,26 +109,30 @@ PATRICT-OSINT/
 │   └── config.yaml                # Konfigurasi aktif (timeout, proxy, toggles)
 ├── core/
 │   ├── async_client.py            # HTTP Client Asinkron berbasis aiohttp
-│   ├── base_module.py             # Kelas abstrak dasar BaseModule
+│   ├── base_module.py             # Kelas abstrak dasar BaseModule (target_type)
 │   ├── config_manager.py          # Manager konfigurasi & environment variable
-│   └── plugin_loader.py           # Engine dynamic discovery & loader modul
+│   └── plugin_loader.py           # Dynamic discovery multi-domain module loader
 ├── data/
 │   └── social_signatures.json     # Database pola & URL signature platform sosmed
 ├── modules/                       # Direktori modul-modul OSINT
-│   ├── caller_id_osint.py
-│   ├── dorking_osint.py
-│   ├── email_osint.py
-│   ├── location_osint.py
-│   ├── network_osint.py
-│   ├── phone_osint.py
-│   ├── social_osint.py
-│   ├── web_history.py
-│   └── whatsapp_osint.py
+│   ├── caller_id_osint.py         # [Phone]
+│   ├── dorking_osint.py           # [Phone]
+│   ├── email_osint.py             # [Phone]
+│   ├── file_forensics.py          # [File/Media Forensics]
+│   ├── location_osint.py          # [Phone]
+│   ├── network_osint.py           # [Phone]
+│   ├── phone_osint.py             # [Phone]
+│   ├── social_osint.py            # [Phone]
+│   ├── web_history.py             # [Phone]
+│   ├── web_osint.py               # [Web Intelligence]
+│   └── whatsapp_osint.py          # [Phone]
 ├── reports/                       # Modul pelaporan
-│   ├── report_generator.py
+│   ├── report_generator.py        # Generator laporan adaptif per domain
 │   └── templates/
-│       └── report_dark.html       # Template HTML dashboard modern
-├── visualizers/                   # Modul visualisasi graf
+│       ├── report_dark.html       # Dashboard HTML Phone Recon & Relationship Graph
+│       ├── report_web.html        # Dashboard HTML Web Recon, Auth & Tech Stack
+│       └── report_forensics.html  # Dashboard HTML Media Forensics, EXIF & Hashes
+├── visualizers/                   # Modul visualisasi graf relasi
 │   └── graph_engine.py
 ├── CONTRIBUTING.md                # Panduan standar kontribusi
 ├── LICENSE                        # Lisensi resmi MIT
@@ -126,17 +152,13 @@ PATRICT-OSINT/
 
 - **Sistem Operasi**: Linux (Ubuntu, Debian, Kali, Fedora), macOS, atau Windows (WSL2 / PowerShell).
 - **Python**: Versi `3.8` atau yang lebih baru.
-- **Koneksi Internet**: Diperlukan untuk melakukan kueri online dan resolusi entitas.
+- **Koneksi Internet**: Diperlukan untuk modul Phone dan Web Reconnaissance.
 
 ---
 
 ## 🚀 Panduan Instalasi
 
-Pilih salah satu metode instalasi di bawah ini:
-
-### Metode 1: Instalasi Cepat Otomatis (Direkomendasikan di Linux/macOS)
-
-Gunakan skrip `run.sh` untuk menyiapkan virtual environment, memasang dependensi, dan mendaftarkan perintah global `osint`:
+### Metode 1: Instalasi Cepat Otomatis (Linux / macOS)
 
 ```bash
 # Clone repositori
@@ -148,7 +170,7 @@ chmod +x run.sh
 ./run.sh install
 ```
 
-Setelah instalasi selesai, perintah `osint` dan `patrict` dapat langsung dijalankan dari direktori mana saja di terminal Anda!
+Setelah instalasi selesai, perintah `osint` dan `patrict` dapat langsung dijalankan dari direktori mana saja di terminal Anda.
 
 ---
 
@@ -163,7 +185,7 @@ source venv/bin/activate  # Di Windows: venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 3. Pasang paket ke sistem lokal (editable mode)
+# 3. Pasang paket ke sistem lokal
 pip install -e .
 
 # 4. Siapkan file konfigurasi
@@ -172,37 +194,11 @@ cp config/config.example.yaml config/config.yaml
 
 ---
 
-### Metode 3: Menggunakan File Distribusi (.whl) dari Pre-release
-
-Unduh file `.whl` dari halaman [GitHub Releases](https://github.com/tb245950-wq/PATRICT-OSINT/releases), lalu install:
-
-```bash
-pip install patrict_osint-2.0.0-py3-none-any.whl
-osint --help
-```
-
----
-
 ## 🎯 Cara Penggunaan
 
-### 1. Mode Baris Perintah (CLI Direct Scan)
+### 1. Mode Interaktif (Pilih Domain Langsung)
 
-Jalankan pemindaian langsung dengan menyertakan nomor telepon target (gunakan format internasional diawali tanda `+`):
-
-```bash
-# Menggunakan command global
-osint +6281234567890
-
-# Atau menggunakan runner script
-./run.sh scan +6281234567890
-
-# Atau menggunakan python langsung
-python3 main.py +6281234567890
-```
-
-### 2. Mode Interaktif
-
-Cukup ketik `osint` atau jalankan `main.py` tanpa argumen untuk masuk ke antarmuka interaktif:
+Ketik `osint` tanpa argumen untuk membuka menu selektor interaktif:
 
 ```bash
 osint
@@ -219,84 +215,62 @@ osint
                         PATRICT-OSINT v2.0
 ===================================================================
 
-[+] Mode Interaktif PATRICT-OSINT
+[+] PILIH DOMAIN PENYELIDIKAN:
+  [1] 📞 Phone Intelligence       (Nomor Telepon Global / ITU-T E.164)
+  [2] 🌐 Web & Tech Recon         (URL / Domain / Tech Stack / Network / Auth)
+  [3] 🖼️ Media & File Forensics   (Image EXIF / Steganografi / Hash / Metadata)
+  [0] 🚪 Keluar (Exit)
 
-[?] Masukkan Nomor Telepon Target (contoh: +6281234567890): +6281234567890
-```
-
-### 3. Menggunakan Konfigurasi Kustom
-
-```bash
-osint +6281234567890 -c /path/ke/config.yaml
-```
-
-### 4. Perintah Tambahan pada `run.sh`
-
-```bash
-./run.sh clean     # Membersihkan file laporan lama di folder output/
-./run.sh help      # Menampilkan menu bantuan lengkap
+[?] Masukkan Pilihan [1-3 / 0]: 
 ```
 
 ---
 
-## ⚙️ Konfigurasi Sistem
+### 2. Mode Baris Perintah (Direct CLI / Auto-Detect)
 
-Seluruh konfigurasi dapat disesuaikan pada file [`config/config.yaml`](config/config.example.yaml):
+Anda dapat langsung memasukkan target pada perintah terminal, sistem akan **mendeteksi domain target secara otomatis**:
 
-```yaml
-app:
-  name: "PATRICT-OSINT Framework"
-  version: "2.2.0"
-  timeout: 10              # Batas waktu timeout HTTP request (detik)
-  max_concurrency: 25      # Jumlah worker asinkron bersamaan
-  rotate_user_agent: true  # Rotasi User-Agent untuk menghindari rate-limit
-  output_dir: "./output"   # Folder penyimpanan hasil laporan
+```bash
+# 📞 Penyelidikan Nomor Telepon (Auto-detect Phone)
+osint +6281234567890
 
-# Pengaktifan / Penonaktifan Modul
-modules:
-  phone_osint: true
-  location_osint: true
-  caller_id_osint: true
-  whatsapp_osint: true
-  social_osint: true
-  dorking_osint: true
-  email_osint: true
-  network_osint: true
-  web_history: true
+# 🌐 Penyelidikan Web & Infrastruktur (Auto-detect Web)
+osint https://target-website.com
 
-# Pengaturan Ekspor Laporan
-reporting:
-  generate_json: true
-  generate_csv: true
-  generate_html: true
-  generate_graph: true
-  theme: "dark"
+# 🖼️ Forensik Berkas Gambar / Media (Auto-detect File)
+osint /home/user/Downloads/foto_tersangka.jpg
+```
+
+Atau tentukan mode secara eksplisit menggunakan opsi `-m`:
+
+```bash
+osint https://example.com -m web
+osint bukti.png -m file
+osint +6281234567890 -m phone
 ```
 
 ---
 
-## 📊 Format Output & Laporan
+## 📊 Format Output & Laporan per Domain
 
-Setiap sesi pemindaian akan menghasilkan berkas intelijen di folder `./output/`:
+Setiap domain menghasilkan laporan yang disesuaikan di folder `./output/`:
 
-1. **Dashboard Interaktif (`report_<target>.html`)**:
-   - Tampilan antarmuka modern bertema gelap (*Dark Mode*).
-   - Tab navigasi untuk ringkasan eksekutif, data telekomunikasi, identitas, jaringan, dan dorks.
-   - Peta lokasi interaktif (*Folium/OSM*) dan visualisasi graf hubungan (*Network Graph*) tersemat langsung.
-2. **Graf Relasi Interaktif (`graph_<target>.html`)**:
-   - Peta simpul dinamis berbasis PyVis yang menghubungkan nomor target, email, username sosial media, domain, dan server jaringan.
-3. **Peta Geografis (`map_<target>.html`)**:
-   - Peta layer satelit dan jalan dengan penanda radius koordinat perkiraan target.
-4. **Data Terstruktur (`report_<target>.json`)**:
-   - Seluruh raw data hasil intelijen untuk integrasi API atau pipeline SIEM/MISP.
-5. **Tabel Ringkasan (`report_<target>.csv`)**:
-   - Format tabular untuk analisis spreadsheet cepat.
+1. **Domain Phone Intelligence**:
+   - `report_<target>.html`: Dashboard interaktif bertema gelap dengan tab navigasi lengkap, peta lokasi HLR, dan graf hubungan identitas.
+   - `graph_<target>.html`: Graf relasi interaktif berbasis PyVis/NetworkX.
+   - `report_<target>.json` & `report_<target>.csv`.
+
+2. **Domain Web & Tech Recon**:
+   - `report_web_<domain>.html`: Dashboard arsitektur web, security headers, alur redirect, tech stack matrix, record DNS, dan lokasi server GeoIP.
+   - `report_web_<domain>.json` & `report_web_<domain>.csv`.
+
+3. **Domain Media & File Forensics**:
+   - `report_file_<filename>.html`: Dashboard forensik biner, tabel hash (MD5/SHA1/SHA256/SHA512), verifikasi magic bytes, metadata kamera EXIF, koordinat GPS foto, dan deteksi steganografi/appended data.
+   - `report_file_<filename>.json` & `report_file_<filename>.csv`.
 
 ---
 
 ## 🤝 Dokumentasi & Panduan Komunitas
-
-Kami sangat menyambut kontribusi dari komunitas sumber terbuka!
 
 - 💬 [Komunitas Discord](https://discord.gg/snGDCZT2E) — Bergabunglah ke server Discord kami untuk diskusi, tanya jawab, kolaborasi, dan koordinasi kontribusi.
 - 📘 [Panduan Kontribusi (CONTRIBUTING.md)](CONTRIBUTING.md) — Alur kerja git branch, standar kode, dan cara menambahkan modul baru.

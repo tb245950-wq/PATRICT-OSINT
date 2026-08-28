@@ -19,7 +19,8 @@ setup(
         "networkx>=3.2.0",
         "pyvis>=0.3.2",
         "requests>=2.31.0",
-        "python-dotenv>=1.0.0"
+        "python-dotenv>=1.0.0",
+        "pillow>=10.0.0"
     ],
     entry_points={
         "console_scripts": [
