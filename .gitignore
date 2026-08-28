@@ -7,3 +7,5 @@ output/
 lib/
 *.egg-info/
 .pytest_cache/
+dist/
+build/

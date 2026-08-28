@@ -8,7 +8,7 @@
  |  __/   / ___ \| | |  _ < | | |___  | | |____|| |_| |___) | || |\  | | |  
  |_|     /_/   \_\_| |_| \_\___\____| |_|        \___/|____/___|_| \_| |_|  
 ===================================================================
-                        PATRICT-OSINT v2.0
+                        PATRICT-OSINT v2.2.0
 ===================================================================
 ```
 
@@ -16,9 +16,10 @@
 
 **Advanced Multi-Domain Reconnaissance, Threat Intelligence & Digital Forensics Engine**
 
+[![PyPI Version](https://img.shields.io/pypi/v/patrict-osint.svg?logo=pypi&logoColor=white&color=blue)](https://pypi.org/project/patrict-osint/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg?style=flat&logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
-[![Build Status](https://img.shields.io/badge/GitHub%20Actions-Pre--release-orange.svg?style=flat&logo=githubactions)](https://github.com/tb245950-wq/PATRICT-OSINT/actions)
+[![PyPI Downloads](https://img.shields.io/pypi/dm/patrict-osint.svg)](https://pypi.org/project/patrict-osint/)
 [![Architecture](https://img.shields.io/badge/Architecture-Modular%20Monorepo-purple.svg?style=flat)](#-arsitektur--struktur-proyek)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=flat)](CONTRIBUTING.md)
 [![Discord Community](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/snGDCZT2E)
@@ -158,23 +159,31 @@ PATRICT-OSINT/
 
 ## 🚀 Panduan Instalasi
 
-### Metode 1: Instalasi Cepat Otomatis (Linux / macOS)
+### Metode 1: Instalasi via PyPI (Rekomendasi)
+
+Paket resmi telah tersedia secara global di [PyPI (Python Package Index)](https://pypi.org/project/patrict-osint/):
 
 ```bash
-# Clone repositori
-git clone https://github.com/tb245950-wq/PATRICT-OSINT.git
-cd PATRICT-OSINT
+# Instalasi langsung ke sistem / environment Anda
+pip install patrict-osint
 
-# Jalankan installer otomatis
-chmod +x run.sh
-./run.sh install
+# Atau menggunakan pipx (terisolasi & aman)
+pipx install patrict-osint
 ```
 
-Setelah instalasi selesai, perintah `osint` dan `patrict` dapat langsung dijalankan dari direktori mana saja di terminal Anda.
+Setelah instalasi, perintah `osint` langsung aktif secara global di terminal Anda!
 
 ---
 
-### Metode 2: Instalasi Manual via Virtual Environment
+### Metode 2: Instalasi Cepat via One-Line Script (Linux & macOS)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/tb245950-wq/PATRICT-OSINT/dev/install.sh | bash
+```
+
+---
+
+### Metode 3: Instalasi Manual dari Sumber (Git Clone)
 
 ```bash
 # 1. Buat dan aktifkan virtual environment
