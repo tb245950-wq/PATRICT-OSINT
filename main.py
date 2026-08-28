@@ -10,6 +10,7 @@ import re
 import json
 import asyncio
 import argparse
+import http.client
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -226,7 +227,11 @@ class PATRICTOrchestrator:
         print(f"{BLUE}{'='*67}{RESET}")
         print(f"  {CYAN}Target URL{RESET}          : {WHITE}{target}{RESET}")
         print(f"  {CYAN}Domain Asli{RESET}         : {WHITE}{w_data.get('domain', 'N/A')}{RESET}")
-        print(f"  {CYAN}Status HTTP{RESET}         : {GREEN}{w_data.get('final_status', 200)} OK{RESET}")
+        
+        status_code = w_data.get('final_status', 200)
+        status_phrase = http.client.responses.get(status_code, "OK" if status_code == 200 else "")
+        status_color = GREEN if status_code == 200 else (YELLOW if status_code in (301, 302) else RED)
+        print(f"  {CYAN}Status HTTP{RESET}         : {status_color}{status_code} {status_phrase}{RESET}")
         print(f"  {CYAN}Final Destination{RESET}   : {WHITE}{w_data.get('final_url', target)}{RESET}")
         
         if meta.get("title"):
@@ -238,8 +243,28 @@ class PATRICTOrchestrator:
         # Server GeoIP
         print(f"\n{YELLOW}[+] SERVER & NETWORK GEOIP:{RESET}")
         print(f"  * IP Publik Server  : {WHITE}{geo.get('ip', 'N/A')}{RESET}")
-        print(f"  * Lokasi Server     : {WHITE}{geo.get('city', '')}, {geo.get('country', '')} (Lat: {geo.get('latitude', '-')}, Lon: {geo.get('longitude', '-')}){RESET}")
-        print(f"  * ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'N/A'}{RESET}")
+        
+        city = str(geo.get("city", "")).strip()
+        country = str(geo.get("country", "")).strip()
+        if city and country and city != "Unknown City" and country != "Unknown Country":
+            loc_str = f"{city}, {country}"
+        elif country and country != "Unknown Country" and country != "Unknown Location / Protected IP":
+            loc_str = country
+        elif city and city != "Unknown City":
+            loc_str = city
+        else:
+            loc_str = "Unknown Location / Protected IP"
+
+        lat = geo.get("latitude")
+        lon = geo.get("longitude")
+        if lat is not None and lon is not None and str(lat) != "-" and str(lon) != "-":
+            coord_str = f"(Lat: {lat}, Lon: {lon})"
+        else:
+            coord_str = ""
+
+        loc_line = f"{loc_str} {coord_str}".strip()
+        print(f"  * Lokasi Server     : {WHITE}{loc_line}{RESET}")
+        print(f"  * ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'Unknown ISP / Protected IP'}{RESET}")
         if geo.get("asn"):
             print(f"  * ASN Jaringan      : {WHITE}{geo.get('asn')}{RESET}")
         if geo.get("maps_url"):

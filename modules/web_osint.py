@@ -1,13 +1,15 @@
 import re
 import ssl
 import json
+import uuid
 import socket
 import base64
 import hashlib
 import asyncio
 import ipaddress
+import http.client
 import urllib.parse
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 
 try:
@@ -40,7 +42,7 @@ CLOUDFLARE_IPV4_RANGES = [
 class WebOSINT(BaseOSINTModule):
     name: str = "Web & Infrastructure Intelligence"
     module_id: str = "web_osint"
-    description: str = "Analisis mendalam web ala WhatWeb: SSL/TLS, crt.sh CT logs, Security Headers Grader, Cloudflare Origin Leak, Sensitive Files, WAF, JWT, tech stack & Threat Summary."
+    description: str = "Analisis mendalam web ala WhatWeb: SSL/TLS, crt.sh CT logs, Security Headers Grader, Cloudflare Origin Leak, Sensitive Files (Soft 404 filtered), WAF, JWT, tech stack & Threat Summary."
     version: str = "2.3.0"
     priority: int = 1
     target_type: str = "web"
@@ -583,7 +585,7 @@ class WebOSINT(BaseOSINTModule):
             "subject": {},
             "valid_from": "",
             "valid_until": "",
-            "days_remaining": None,  # None jika tidak dapat dihitung, bukan default 0
+            "days_remaining": None,
             "is_expired": False,
             "tls_version": "",
             "cipher": "",
@@ -617,7 +619,6 @@ class WebOSINT(BaseOSINTModule):
                     cert_info["cipher"] = f"{cipher[0]} ({cipher[1]})" if cipher else "Unknown"
 
                     if cert:
-                        # Issuer & Subject
                         for item in cert.get("issuer", ()):
                             for k, v in item:
                                 cert_info["issuer"][k] = v
@@ -625,7 +626,6 @@ class WebOSINT(BaseOSINTModule):
                             for k, v in item:
                                 cert_info["subject"][k] = v
 
-                        # Validity
                         not_before = cert.get("notBefore", "")
                         not_after = cert.get("notAfter", "")
                         cert_info["valid_from"] = not_before
@@ -639,7 +639,6 @@ class WebOSINT(BaseOSINTModule):
                             cert_info["days_remaining"] = diff
                             cert_info["is_expired"] = diff < 0
 
-                        # SANs (Subject Alternative Names)
                         sans = []
                         for san_type, san_val in cert.get("subjectAltName", ()):
                             if san_type.lower() == "dns":
@@ -680,7 +679,6 @@ class WebOSINT(BaseOSINTModule):
             "Accept": "application/json, text/plain, */*"
         }
 
-        # Query dengan retry mechanism untuk menghadapi 502/504 crt.sh
         queries = [
             f"https://crt.sh/?q=%25.{domain}&output=json",
             f"https://crt.sh/?q={domain}&output=json"
@@ -701,7 +699,6 @@ class WebOSINT(BaseOSINTModule):
                                 clean_sub = sub.strip().lower()
                                 if clean_sub.startswith("*."):
                                     clean_sub = clean_sub[2:]
-                                # Validasi domain
                                 if clean_sub.endswith(domain) and clean_sub != domain and re.match(r"^[a-z0-9.-]+$", clean_sub):
                                     subdomains.add(clean_sub)
                             
@@ -747,7 +744,6 @@ class WebOSINT(BaseOSINTModule):
             "summary": "No CDN leak detected."
         }
 
-        # 1. Periksa apakah target berada di balik Cloudflare / CDN
         current_ip = server_geoip.get("ip") or (dns_records.get("A", [])[0] if dns_records.get("A") else "")
         isp = server_geoip.get("isp", "")
         asn = server_geoip.get("asn", "")
@@ -831,43 +827,65 @@ class WebOSINT(BaseOSINTModule):
     async def _probe_sensitive_files(self, base_url: str) -> List[Dict[str, Any]]:
         """
         Sensitive File & Directory Discovery (Passive Probing):
-        Mengecek ketersediaan file konfigurasi & sensitif publik via HTTP status code.
-        Status 401/403 diberi label BLOCKED (bukan false-alarm CRITICAL).
+        Dilengkapi Soft 404 Baseline Detection & WAF Catch-All Filtering.
+        - Status 401/403 diberi status [BLOCKED] / [INFO].
+        - Status 200 diverifikasi terhadap baseline 404 acak & Content-Type.
         """
         candidates = [
             # High / Critical Exposure Files
-            ("/.env", "Environment Secrets / API Keys", "CRITICAL"),
-            ("/.env.local", "Local Environment Configuration", "CRITICAL"),
-            ("/.env.production", "Production Environment Configuration", "CRITICAL"),
-            ("/.git/HEAD", "Git Repository Metadata Exposure", "CRITICAL"),
-            ("/.git/config", "Git Repository Configuration", "CRITICAL"),
-            ("/config.json", "Application Configuration File", "HIGH"),
-            ("/web.config", "IIS Web Configuration File", "HIGH"),
-            ("/storage/logs/laravel.log", "Laravel Application Error Log", "HIGH"),
-            ("/phpinfo.php", "PHP Information & Environment Leak", "HIGH"),
-            ("/info.php", "PHP Info Test Page", "HIGH"),
-            ("/server-status", "Apache Server Status Page", "MEDIUM"),
-            ("/wp-config.php.bak", "WordPress Configuration Backup", "CRITICAL"),
-            ("/wp-config.old", "WordPress Config Old Backup", "CRITICAL"),
-            ("/backup.sql", "Database Backup Dump", "CRITICAL"),
-            ("/db.sql", "SQL Database Dump", "CRITICAL"),
-            ("/docker-compose.yml", "Docker Compose Infrastructure Setup", "HIGH"),
-            ("/Dockerfile", "Docker Container Build File", "HIGH"),
-            ("/actuator/health", "Spring Boot Actuator Health", "MEDIUM"),
-            ("/actuator/env", "Spring Boot Actuator Environment Secrets", "CRITICAL"),
-            ("/swagger-ui.html", "Swagger / OpenAPI Documentation", "LOW"),
-            ("/api-docs", "API Documentation Endpoint", "LOW"),
-            ("/graphql", "GraphQL API Endpoint", "INFO"),
-            ("/robots.txt", "Robots Crawler Directives", "INFO"),
-            ("/sitemap.xml", "XML Sitemap", "INFO"),
-            ("/.well-known/security.txt", "Security Policy Contact", "INFO")
+            ("/.env", "Environment Secrets / API Keys", "CRITICAL", "config"),
+            ("/.env.local", "Local Environment Configuration", "CRITICAL", "config"),
+            ("/.env.production", "Production Environment Configuration", "CRITICAL", "config"),
+            ("/.git/HEAD", "Git Repository Metadata Exposure", "CRITICAL", "git"),
+            ("/.git/config", "Git Repository Configuration", "CRITICAL", "git"),
+            ("/config.json", "Application Configuration File", "HIGH", "config"),
+            ("/web.config", "IIS Web Configuration File", "HIGH", "config"),
+            ("/storage/logs/laravel.log", "Laravel Application Error Log", "HIGH", "log"),
+            ("/phpinfo.php", "PHP Information & Environment Leak", "HIGH", "phpinfo"),
+            ("/info.php", "PHP Info Test Page", "HIGH", "phpinfo"),
+            ("/server-status", "Apache Server Status Page", "MEDIUM", "server-status"),
+            ("/wp-config.php.bak", "WordPress Configuration Backup", "CRITICAL", "config"),
+            ("/wp-config.old", "WordPress Config Old Backup", "CRITICAL", "config"),
+            ("/backup.sql", "Database Backup Dump", "CRITICAL", "sql"),
+            ("/db.sql", "SQL Database Dump", "CRITICAL", "sql"),
+            ("/docker-compose.yml", "Docker Compose Infrastructure Setup", "HIGH", "config"),
+            ("/Dockerfile", "Docker Container Build File", "HIGH", "config"),
+            ("/actuator/health", "Spring Boot Actuator Health", "MEDIUM", "actuator"),
+            ("/actuator/env", "Spring Boot Actuator Environment Secrets", "CRITICAL", "actuator"),
+            ("/swagger-ui.html", "Swagger / OpenAPI Documentation", "LOW", "html-docs"),
+            ("/api-docs", "API Documentation Endpoint", "LOW", "json-docs"),
+            ("/graphql", "GraphQL API Endpoint", "INFO", "graphql"),
+            ("/robots.txt", "Robots Crawler Directives", "INFO", "robots"),
+            ("/sitemap.xml", "XML Sitemap", "INFO", "sitemap"),
+            ("/.well-known/security.txt", "Security Policy Contact", "INFO", "security-txt")
         ]
 
         findings = []
         if not self.async_client:
             return findings
 
-        for path, desc, default_sev in candidates:
+        # 1. Soft 404 & WAF Catch-All Baseline Request
+        random_token = f"patrict-chk-{uuid.uuid4().hex[:12]}.html"
+        baseline_url = urllib.parse.urljoin(base_url, f"/{random_token}")
+        
+        baseline_status = 404
+        baseline_len = 0
+        baseline_hash = ""
+        baseline_title = ""
+
+        try:
+            b_status, b_body, b_headers = await self.async_client.get(baseline_url, timeout=6)
+            baseline_status = b_status
+            baseline_len = len(b_body)
+            baseline_hash = hashlib.md5(b_body.encode("utf-8", errors="ignore")).hexdigest()
+            t_match = re.search(r"<title>(.*?)</title>", b_body, re.IGNORECASE)
+            if t_match:
+                baseline_title = t_match.group(1).strip().lower()
+        except Exception:
+            pass
+
+        # 2. Eksekusi Probe Setiap Endpoint
+        for path, desc, default_sev, file_type in candidates:
             probe_url = urllib.parse.urljoin(base_url, path)
             try:
                 status, body, headers = await self.async_client.get(probe_url, timeout=6)
@@ -875,29 +893,65 @@ class WebOSINT(BaseOSINTModule):
                     is_real = True
                     content_len = len(body)
                     assigned_sev = default_sev
-                    
-                    # 1. Penanganan Status 403 Forbidden & 401 Unauthorized
+                    body_lower = body.lower()
+                    content_type = str(headers.get("content-type", "")).lower()
+
+                    # Status 401 & 403: Terproteksi / Diblokir oleh Server
                     if status in (401, 403):
                         assigned_sev = "BLOCKED"
-                        desc = f"{desc} (Akses Diblokir oleh Server [OK])"
+                        status_phrase = http.client.responses.get(status, "Forbidden")
+                        desc = f"{desc} (Akses Diblokir oleh Server [{status_phrase}])"
 
-                    # 2. False-positive filtering untuk custom 404 handler yang mengembalikan 200 OK (SPA)
+                    # Status 200: Validasi Ketat Terhadap Soft 404 / Catch-all & Content-Type
                     elif status == 200:
-                        body_lower = body.lower()
-                        is_html = "<!doctype html" in body_lower or "<html" in body_lower or "<head" in body_lower
-                        
-                        if path in ("/.env", "/.env.local", "/.env.production", "/config.json", "/web.config", "/storage/logs/laravel.log", "/backup.sql", "/db.sql", "/Dockerfile", "/docker-compose.yml"):
-                            if is_html:
+                        is_html = "<!doctype html" in body_lower or "<html" in body_lower or "<head" in body_lower or "<body" in body_lower
+
+                        # A. Soft 404 Check: Bandingkan dengan Baseline Acak
+                        if baseline_status == 200:
+                            current_hash = hashlib.md5(body.encode("utf-8", errors="ignore")).hexdigest()
+                            # Hash identik dengan 404 acak
+                            if current_hash == baseline_hash:
                                 is_real = False
-                        elif path == "/.git/HEAD":
-                            if not ("ref: refs/" in body or len(body.strip()) == 40 or "ref:" in body_lower):
+                            # Ukuran identik (toleransi ±15 bytes)
+                            elif abs(content_len - baseline_len) <= 15:
                                 is_real = False
-                        elif path in ("/phpinfo.php", "/info.php"):
-                            if "php version" not in body_lower and "zend" not in body_lower:
-                                is_real = False
-                        elif path == "/server-status":
-                            if "apache server status" not in body_lower and "server uptime" not in body_lower:
-                                is_real = False
+                            # Judul halaman sama persis dengan baseline 404
+                            elif baseline_title:
+                                p_title_m = re.search(r"<title>(.*?)</title>", body, re.IGNORECASE)
+                                if p_title_m and p_title_m.group(1).strip().lower() == baseline_title:
+                                    is_real = False
+
+                        # B. Format & Content-Type Validation per Tipe File
+                        if is_real:
+                            if file_type in ("config", "log", "sql"):
+                                # File config/sql/log tidak boleh berupa halaman HTML
+                                if is_html or "text/html" in content_type:
+                                    is_real = False
+
+                            elif file_type == "git":
+                                # .git/HEAD harus memuat ref atau hash 40 karakter
+                                if not ("ref: refs/" in body or len(body.strip()) == 40 or "ref:" in body_lower):
+                                    is_real = False
+
+                            elif file_type == "phpinfo":
+                                if "php version" not in body_lower and "zend engine" not in body_lower:
+                                    is_real = False
+
+                            elif file_type == "server-status":
+                                if "apache server status" not in body_lower and "server uptime" not in body_lower:
+                                    is_real = False
+
+                            elif file_type == "robots":
+                                if not any(k in body_lower for k in ["user-agent", "disallow", "allow", "sitemap"]):
+                                    is_real = False
+
+                            elif file_type == "sitemap":
+                                if not any(k in body_lower for k in ["<urlset", "<sitemapindex", "<url>"]):
+                                    is_real = False
+
+                            elif file_type == "security-txt":
+                                if not any(k in body_lower for k in ["contact:", "expires:", "encryption:"]):
+                                    is_real = False
 
                     if is_real:
                         findings.append({
@@ -920,6 +974,7 @@ class WebOSINT(BaseOSINTModule):
         """
         Menghasilkan rangkuman ancaman keamanan, tingkat risiko keseluruhan (Threat Score),
         dan rekomendasi mitigasi konkret untuk target web.
+        Hanya memasukkan file yang benar-benar berstatus 200 OK yang terverifikasi.
         """
         threats = []
         risk_score = 0  # 0 to 100
@@ -958,7 +1013,7 @@ class WebOSINT(BaseOSINTModule):
                 "mitigation": "Gunakan firewall pada server origin agar hanya menerima traffic dari IP subnet resmi Cloudflare."
             })
 
-        # Sensitive Files Exposed (Hanya hitung yang benar-benar bocor dengan status 200)
+        # Sensitive Files Exposed (Hanya hitung yang berstatus 200 OK dengan konten terverifikasi)
         files = results.get("sensitive_files_found", [])
         critical_files = [f for f in files if f.get("severity") == "CRITICAL" and f.get("status") == 200]
         high_files = [f for f in files if f.get("severity") == "HIGH" and f.get("status") == 200]
@@ -1062,9 +1117,17 @@ class WebOSINT(BaseOSINTModule):
         return records
 
     async def _get_server_geoip(self, ip: str) -> Dict[str, Any]:
-        """Mengambil data koordinat & GeoIP dari server IP publik"""
+        """Mengambil data koordinat & GeoIP dari server IP publik dengan fallback rapi"""
         if not ip or not self.async_client:
-            return {}
+            return {
+                "ip": ip or "N/A",
+                "country": "Unknown Location / Protected IP",
+                "city": "",
+                "isp": "Unknown ISP",
+                "latitude": "-",
+                "longitude": "-",
+                "maps_url": ""
+            }
 
         try:
             url = f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon,isp,org,as,query"
@@ -1072,27 +1135,37 @@ class WebOSINT(BaseOSINTModule):
             if status == 200:
                 data = json.loads(text)
                 if data.get("status") == "success":
+                    lat = data.get("lat")
+                    lon = data.get("lon")
+                    maps_url = f"https://www.google.com/maps?q={lat},{lon}" if lat is not None and lon is not None else ""
                     return {
                         "ip": ip,
-                        "country": data.get("country"),
-                        "region": data.get("regionName"),
-                        "city": data.get("city"),
-                        "latitude": data.get("lat"),
-                        "longitude": data.get("lon"),
-                        "isp": data.get("isp"),
-                        "organization": data.get("org"),
-                        "asn": data.get("as"),
-                        "maps_url": f"https://www.google.com/maps?q={data.get('lat')},{data.get('lon')}"
+                        "country": data.get("country") or "Unknown Country",
+                        "region": data.get("regionName") or "",
+                        "city": data.get("city") or "",
+                        "latitude": lat if lat is not None else "-",
+                        "longitude": lon if lon is not None else "-",
+                        "isp": data.get("isp") or data.get("org") or "Unknown ISP / Organization",
+                        "organization": data.get("org") or "",
+                        "asn": data.get("as") or "",
+                        "maps_url": maps_url
                     }
         except Exception as e:
             self.logger.warning(f"Gagal mengambil GeoIP server ({ip}): {e}")
 
-        return {"ip": ip}
+        return {
+            "ip": ip,
+            "country": "Unknown Location / Protected IP",
+            "city": "",
+            "isp": "Unknown ISP",
+            "latitude": "-",
+            "longitude": "-",
+            "maps_url": ""
+        }
 
     async def run(self, target: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = self._normalize_url(target)
         domain = self._extract_domain(url)
-        aggression = (context or {}).get("aggression") or self.config.get("web.aggression", 1)
 
         results = {
             "target_url": url,
@@ -1209,16 +1282,17 @@ class WebOSINT(BaseOSINTModule):
         # 11. Tech Stack Fingerprinting (WhatWeb Style)
         results["tech_stack"] = self._detect_tech_stack(final_headers, html_content)
 
-        # 12. Sensitive File & Directory Discovery (Passive Probing)
+        # 12. Sensitive File & Directory Discovery (Passive Probing with Soft 404 Filtering)
         results["sensitive_files_found"] = await self._probe_sensitive_files(results["final_url"])
 
         # 13. Vulnerability & Threat Intelligence Summary Matrix
         results["threat_vulnerability_summary"] = self._generate_threat_summary(results)
 
         # 14. Bangun WhatWeb Brief Line Summary
-        brief_parts = [f"{results['final_url']} [{results['final_status']} OK]"]
+        status_phrase = http.client.responses.get(results['final_status'], "OK" if results['final_status'] == 200 else "")
+        brief_parts = [f"{results['final_url']} [{results['final_status']} {status_phrase}]".strip()]
         geo = results.get("server_geoip", {})
-        if geo.get("country"):
+        if geo.get("country") and geo.get("country") != "Unknown Location / Protected IP":
             brief_parts.append(f"Country[{geo.get('country').upper()}][{geo.get('country')[:2].upper()}]")
         if server_ip:
             brief_parts.append(f"IP[{server_ip}]")

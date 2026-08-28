@@ -123,10 +123,11 @@ class ReportGenerator:
             
             # Server GeoIP
             geo = web_info.get("server_geoip", {})
+            loc_val = f"{geo.get('city','')}, {geo.get('country','')}".strip(" ,") or "Unknown Location / Protected IP"
             writer.writerow(["Server", "IP Address", geo.get("ip", ""), "DNS"])
-            writer.writerow(["Server", "Location", f"{geo.get('city','')}, {geo.get('country','')}", "GeoIP"])
+            writer.writerow(["Server", "Location", loc_val, "GeoIP"])
             writer.writerow(["Server", "Coordinates", f"{geo.get('latitude','')}, {geo.get('longitude','')}", "GeoIP"])
-            writer.writerow(["Server", "ISP", geo.get("isp", ""), "GeoIP"])
+            writer.writerow(["Server", "ISP", geo.get("isp", "Unknown ISP"), "GeoIP"])
 
             # Tech Stack
             stack = web_info.get("tech_stack", {})
