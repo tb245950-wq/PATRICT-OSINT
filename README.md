@@ -8,7 +8,7 @@
  |  __/   / ___ \| | |  _ < | | |___  | | |____|| |_| |___) | || |\  | | |  
  |_|     /_/   \_\_| |_| \_\___\____| |_|        \___/|____/___|_| \_| |_|  
 ===================================================================
-                        PATRICT-OSINT v2.2.0
+                        PATRICT-OSINT v2.3.0
 ===================================================================
 ```
 
@@ -19,9 +19,8 @@
 [![PyPI Version](https://img.shields.io/pypi/v/patrict-osint.svg?logo=pypi&logoColor=white&color=blue)](https://pypi.org/project/patrict-osint/)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-blue.svg?style=flat&logo=python)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat)](LICENSE)
-[![PyPI Downloads](https://img.shields.io/pypi/dm/patrict-osint.svg)](https://pypi.org/project/patrict-osint/)
-[![Architecture](https://img.shields.io/badge/Architecture-Modular%20Monorepo-purple.svg?style=flat)](#-arsitektur--struktur-proyek)
-[![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg?style=flat)](CONTRIBUTING.md)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Muhammad%20Mughni-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/muhammad-mughni-ishfi-pratama-6759523aa)
+[![Instagram](https://img.shields.io/badge/Instagram-@mughniishfi__-E4405F?style=flat&logo=instagram&logoColor=white)](https://www.instagram.com/mughniishfi_)
 [![Discord Community](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/snGDCZT2E)
 
 </div>
@@ -292,7 +291,9 @@ Setiap domain menghasilkan laporan yang disesuaikan di folder `./output/`:
 
 Proyek **PATRICT-OSINT** diciptakan, dirancang, dan dikembangkan oleh:
 
-* **Nama Pengembang / Creator**: **Muhammad Mughni**
+* **Nama Pengembang / Creator**: **Muhammad Mughni (Muhammad Mughni Ishfi Pratama)**
+* **LinkedIn**: [Muhammad Mughni Ishfi Pratama](https://www.linkedin.com/in/muhammad-mughni-ishfi-pratama-6759523aa)
+* **Instagram**: [@mughniishfi_](https://www.instagram.com/mughniishfi_)
 * **GitHub**: [@tb245950-wq](https://github.com/tb245950-wq)
 * **Paket Resmi PyPI**: [patrict-osint](https://pypi.org/project/patrict-osint/)
 * **Komunitas Riset**: [Discord Server PATRICT](https://discord.gg/snGDCZT2E)
