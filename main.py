@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
 # PATRICT-OSINT FRAMEWORK - MONOREPO ORCHESTRATOR
-# VERSION: 2.0.0
+# VERSION: 2.2.0
 # ============================================================
 
 import os
@@ -11,7 +11,7 @@ import json
 import asyncio
 import argparse
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from core.config_manager import ConfigManager
 from core.async_client import AsyncHttpClient
@@ -20,8 +20,9 @@ from visualizers.graph_engine import GraphEngine
 from reports.report_generator import ReportGenerator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VERSION = "2.2.0"
 
-# ANSI Colors
+# ANSI Terminal Colors
 BLUE = "\033[1;34m"
 CYAN = "\033[1;36m"
 WHITE = "\033[1;37m"
@@ -34,11 +35,11 @@ RESET = "\033[0m"
 class PATRICTOrchestrator:
     """
     Main Orchestrator for PATRICT-OSINT Framework.
-    Mengatur konfigurasi, plugin loader dinamis multi-domain, eksekusi async,
-    pencetakan hasil kaya langsung di terminal, serta penyimpanan JSON di direktori aktif.
+    Mengatur konfigurasi, dynamic plugin loader, eksekusi async,
+    pencetakan hasil kaya langsung di terminal, dan ekspor JSON.
     """
     
-    def __init__(self, config_path: str = None):
+    def __init__(self, config_path: str = None, timeout: Optional[int] = None):
         if config_path is None:
             default_cfg = os.path.join(BASE_DIR, "config", "config.yaml")
             if not os.path.exists(default_cfg):
@@ -50,6 +51,11 @@ class PATRICTOrchestrator:
                 config_path = candidate
 
         self.config_manager = ConfigManager(config_path)
+        
+        # Override timeout jika diberikan via CLI flag -T
+        if timeout:
+            self.config_manager.set("app.timeout", timeout)
+            
         self.output_dir = self.config_manager.get("app.output_dir", "./output")
         os.makedirs(self.output_dir, exist_ok=True)
         
@@ -79,7 +85,7 @@ class PATRICTOrchestrator:
 {BLUE} |  __/   / ___ \| | |  _ < | | |___  | | {CYAN}|____|{WHITE}| |_| |___) | || |\  | | |  {RESET}
 {BLUE} |_|     /_/   \_\_| |_| \_\___\____| |_|  {RESET}      {WHITE}\___/|____/___|_| \_| |_|  {RESET}
 {BLUE}==================================================================={RESET}
-                        {BLUE}PATRICT{WHITE}-{CYAN}OSINT {WHITE}v2.0{RESET}
+                        {BLUE}PATRICT{WHITE}-{CYAN}OSINT {WHITE}v{VERSION}{RESET}
 {BLUE}==================================================================={RESET}
 """
         print(banner)
@@ -101,7 +107,7 @@ class PATRICTOrchestrator:
         print(f"  {CYAN}Format Nasional{RESET}     : {WHITE}{p_data.get('formatted_national', 'N/A')}{RESET}")
         print(f"  {CYAN}Operator / Carrier{RESET}  : {GREEN}{p_data.get('carrier', 'Tidak Teridentifikasi')}{RESET}")
         print(f"  {CYAN}Wilayah / Negara{RESET}    : {WHITE}{p_data.get('country', 'N/A')} ({p_data.get('timezone', ['N/A'])[0] if isinstance(p_data.get('timezone'), list) and p_data.get('timezone') else 'N/A'}){RESET}")
-        print(f"  {CYAN}Status Validasi{RESET}     : {GREEN}ITU-T E.164 VALID ✔{RESET}" if p_data.get("valid") else f"  {CYAN}Status Validasi{RESET}     : {RED}TIDAK VALID ✘{RESET}")
+        print(f"  {CYAN}Status Validasi{RESET}     : {GREEN}ITU-T E.164 VALID [OK]{RESET}" if p_data.get("valid") else f"  {CYAN}Status Validasi{RESET}     : {RED}TIDAK VALID [FAIL]{RESET}")
         
         if l_data.get("latitude") and l_data.get("longitude"):
             print(f"  {CYAN}Estimasi Lokasi HLR{RESET} : {WHITE}{l_data.get('city', '')} {l_data.get('region', '')} (Lat: {l_data.get('latitude')}, Lon: {l_data.get('longitude')}){RESET}")
@@ -110,99 +116,121 @@ class PATRICTOrchestrator:
         print(f"\n{YELLOW}[+] IDENTITAS & CALLER DIRECTORY:{RESET}")
         owner_name = c_data.get("name") or c_data.get("caller_name") or "Tidak ditemukan di direktori publik"
         spam_score = c_data.get("spam_score", "0%")
-        print(f"  • Nama Teridentifikasi : {WHITE}{owner_name}{RESET}")
-        print(f"  • Skor Reputasi/Spam   : {GREEN}{spam_score}{RESET}")
+        print(f"  * Nama Teridentifikasi : {WHITE}{owner_name}{RESET}")
+        print(f"  * Skor Reputasi/Spam   : {GREEN}{spam_score}{RESET}")
 
         # WhatsApp
         if w_data:
-            wa_status = "Aktif ✔" if w_data.get("is_registered") or w_data.get("valid") else "Tidak Terdeteksi"
+            wa_status = "Aktif [OK]" if w_data.get("is_registered") or w_data.get("valid") else "Tidak Terdeteksi"
             print(f"\n{YELLOW}[+] WHATSAPP RECONNAISSANCE:{RESET}")
-            print(f"  • Status WhatsApp      : {GREEN if 'Aktif' in wa_status else WHITE}{wa_status}{RESET}")
-            print(f"  • Link Profil          : {CYAN}https://wa.me/{target.replace('+', '')}{RESET}")
+            print(f"  * Status WhatsApp      : {GREEN if 'Aktif' in wa_status else WHITE}{wa_status}{RESET}")
+            print(f"  * Link Profil          : {CYAN}https://wa.me/{target.replace('+', '')}{RESET}")
 
         # Social Media
         accounts = s_data.get("accounts", []) if isinstance(s_data, dict) else []
         print(f"\n{YELLOW}[+] AKUN MEDIA SOSIAL TERHUBUNG ({len(accounts)} Ditemukan):{RESET}")
         if accounts:
             for acc in accounts:
-                print(f"  • {acc.get('platform', 'Platform') : <20} : {GREEN}Terdeteksi{RESET} ({acc.get('url', '')})")
+                print(f"  * {acc.get('platform', 'Platform') : <20} : {GREEN}Terdeteksi{RESET} ({acc.get('url', '')})")
         else:
-            print(f"  • {WHITE}Tidak ditemukan akun media sosial publik dengan signature nomor ini.{RESET}")
+            print(f"  * {WHITE}Tidak ditemukan akun media sosial publik dengan signature nomor ini.{RESET}")
 
         # Emails
         emails = e_data.get("emails", []) if isinstance(e_data, dict) else []
         print(f"\n{YELLOW}[+] POTENSI ALAMAT EMAIL TERKAIT ({len(emails)}):{RESET}")
         if emails:
             for em in emails[:5]:
-                print(f"  • {WHITE}{em.get('email', '')}{RESET} {GREEN}({em.get('source', 'OSINT')}){RESET}")
+                print(f"  * {WHITE}{em.get('email', '')}{RESET} {GREEN}({em.get('source', 'OSINT')}){RESET}")
         else:
-            print(f"  • {WHITE}Tidak ada permutasi email yang aktif.{RESET}")
+            print(f"  * {WHITE}Tidak ada permutasi email yang aktif.{RESET}")
 
         # Dorks
         findings = d_data.get("findings", []) if isinstance(d_data, dict) else []
         if findings:
             print(f"\n{YELLOW}[+] TEMUAN DORKING & DOKUMEN PUBLIK ({len(findings)}):{RESET}")
             for item in findings[:4]:
-                print(f"  • [{item.get('category', 'Info')}] {WHITE}{item.get('title', '')}{RESET} -> {CYAN}{item.get('url', '')}{RESET}")
+                print(f"  * [{item.get('category', 'Info')}] {WHITE}{item.get('title', '')}{RESET} -> {CYAN}{item.get('url', '')}{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 
     def _print_web_terminal(self, target: str, results: Dict[str, Any]):
         w_data = results.get("web_osint", {}).get("data", {})
+        meta = w_data.get("page_metadata", {})
         geo = w_data.get("server_geoip", {})
         stack = w_data.get("tech_stack", {})
         auth = w_data.get("auth_intelligence", {})
         dns_rec = w_data.get("dns_records", {})
+        endpoints = w_data.get("interesting_endpoints", [])
 
         print(f"\n{BLUE}{'='*67}{RESET}")
-        print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE WEB & INFRASTRUKTUR{RESET}")
+        print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE WEB & WHATWEB FINGERPRINT{RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
         print(f"  {CYAN}Target URL{RESET}          : {WHITE}{target}{RESET}")
         print(f"  {CYAN}Domain Asli{RESET}         : {WHITE}{w_data.get('domain', 'N/A')}{RESET}")
         print(f"  {CYAN}Status HTTP{RESET}         : {GREEN}{w_data.get('final_status', 200)} OK{RESET}")
         print(f"  {CYAN}Final Destination{RESET}   : {WHITE}{w_data.get('final_url', target)}{RESET}")
         
+        if meta.get("title"):
+            print(f"  {CYAN}Page Title{RESET}        : {WHITE}{meta.get('title')}{RESET}")
+            
         methods = w_data.get("http_methods_allowed", [])
         print(f"  {CYAN}Allowed Methods{RESET}     : {GREEN}{', '.join(methods) if methods else 'GET, HEAD'}{RESET}")
 
         # Server GeoIP
         print(f"\n{YELLOW}[+] SERVER & NETWORK GEOIP:{RESET}")
-        print(f"  • IP Publik Server  : {WHITE}{geo.get('ip', 'N/A')}{RESET}")
-        print(f"  • Lokasi Server     : {WHITE}{geo.get('city', '')}, {geo.get('country', '')} (Lat: {geo.get('latitude', '-')}, Lon: {geo.get('longitude', '-')}){RESET}")
-        print(f"  • ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'N/A'}{RESET}")
+        print(f"  * IP Publik Server  : {WHITE}{geo.get('ip', 'N/A')}{RESET}")
+        print(f"  * Lokasi Server     : {WHITE}{geo.get('city', '')}, {geo.get('country', '')} (Lat: {geo.get('latitude', '-')}, Lon: {geo.get('longitude', '-')}){RESET}")
+        print(f"  * ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'N/A'}{RESET}")
         if geo.get("asn"):
-            print(f"  • ASN Jaringan      : {WHITE}{geo.get('asn')}{RESET}")
+            print(f"  * ASN Jaringan      : {WHITE}{geo.get('asn')}{RESET}")
         if geo.get("maps_url"):
-            print(f"  • Lokasi Google Maps: {CYAN}{geo.get('maps_url')}{RESET}")
+            print(f"  * Lokasi Google Maps: {CYAN}{geo.get('maps_url')}{RESET}")
 
-        # Tech Stack
-        print(f"\n{YELLOW}[+] STACK TEKNOLOGI:{RESET}")
+        # Tech Stack ala WhatWeb
+        print(f"\n{YELLOW}[+] STACK TEKNOLOGI & FINGERPRINTING:{RESET}")
         servers = stack.get("web_servers", [])
+        langs = stack.get("programming_languages", [])
         backends = stack.get("backend_frameworks", [])
         frontends = stack.get("frontend_libraries", [])
         cms_list = stack.get("cms_and_platforms", [])
+        wafs = stack.get("waf_and_security", [])
         cdns = stack.get("analytics_and_cdn", [])
 
-        print(f"  • Web Servers       : {WHITE}{', '.join(servers) if servers else 'Hidden / Generic'}{RESET}")
+        print(f"  * Web Servers       : {WHITE}{', '.join(servers) if servers else 'Hidden / Generic'}{RESET}")
+        if langs:
+            print(f"  * Language/Runtime  : {WHITE}{', '.join(langs)}{RESET}")
         if backends:
-            print(f"  • Backend Framework : {WHITE}{', '.join(backends)}{RESET}")
+            print(f"  * Backend Framework : {WHITE}{', '.join(backends)}{RESET}")
         if frontends:
-            print(f"  • Frontend Tech     : {WHITE}{', '.join(frontends)}{RESET}")
+            print(f"  * Frontend Tech     : {WHITE}{', '.join(frontends)}{RESET}")
         if cms_list:
-            print(f"  • CMS / Platform    : {WHITE}{', '.join(cms_list)}{RESET}")
+            print(f"  * CMS / Platform    : {WHITE}{', '.join(cms_list)}{RESET}")
+        if wafs:
+            print(f"  * WAF / Firewall    : {YELLOW}{', '.join(wafs)}{RESET}")
         if cdns:
-            print(f"  • CDN / Analytics   : {WHITE}{', '.join(cdns)}{RESET}")
+            print(f"  * CDN / Analytics   : {WHITE}{', '.join(cdns)}{RESET}")
 
         # Auth & Security
         print(f"\n{YELLOW}[+] AUTHENTICATION & COOKIE SECURITY:{RESET}")
         auth_types = auth.get("auth_type_detected", ["Standard / Stateless"])
-        print(f"  • Tipe Auth/Session : {WHITE}{', '.join(auth_types)}{RESET}")
+        print(f"  * Tipe Auth/Session : {WHITE}{', '.join(auth_types)}{RESET}")
         
         flags = auth.get("security_flags", {})
-        httponly = f"{GREEN}Aktif ✔{RESET}" if flags.get("httponly") else f"{RED}Tidak Aktif ✘{RESET}"
-        secure = f"{GREEN}Aktif ✔{RESET}" if flags.get("secure") else f"{RED}Tidak Aktif ✘{RESET}"
+        httponly = f"{GREEN}Aktif [OK]{RESET}" if flags.get("httponly") else f"{RED}Tidak Aktif [FAIL]{RESET}"
+        secure = f"{GREEN}Aktif [OK]{RESET}" if flags.get("secure") else f"{RED}Tidak Aktif [FAIL]{RESET}"
         samesite = flags.get("samesite") or "Default"
-        print(f"  • Cookie Flags      : HttpOnly: {httponly} | Secure: {secure} | SameSite: {WHITE}{samesite}{RESET}")
+        print(f"  * Cookie Flags      : HttpOnly: {httponly} | Secure: {secure} | SameSite: {WHITE}{samesite}{RESET}")
+
+        # Endpoints & Discovery
+        if endpoints:
+            print(f"\n{YELLOW}[+] ENDPOINT & SERVICE DISCOVERY:{RESET}")
+            for ep in endpoints:
+                print(f"  * {ep.get('name') : <18}: {GREEN}[{ep.get('status')}]{RESET} {WHITE}{ep.get('url')}{RESET}")
+
+        if meta.get("emails_found"):
+            print(f"\n{YELLOW}[+] EMAIL TERSEKRAP DARI HALAMAN:{RESET}")
+            for em in meta.get("emails_found")[:5]:
+                print(f"  * {WHITE}{em}{RESET}")
 
         # DNS Records
         if any(dns_rec.values()):
@@ -210,7 +238,7 @@ class PATRICTOrchestrator:
             for r_type in ["A", "MX", "NS", "TXT"]:
                 r_val = dns_rec.get(r_type, [])
                 if r_val:
-                    print(f"  • {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
+                    print(f"  * {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 
@@ -232,72 +260,85 @@ class PATRICTOrchestrator:
 
         # Hashes
         print(f"\n{YELLOW}[+] KRIPTOGRAFI & HASH INTEGRITAS:{RESET}")
-        print(f"  • MD5               : {WHITE}{hashes.get('md5', 'N/A')}{RESET}")
-        print(f"  • SHA-1             : {WHITE}{hashes.get('sha1', 'N/A')}{RESET}")
-        print(f"  • SHA-256           : {WHITE}{hashes.get('sha256', 'N/A')}{RESET}")
+        print(f"  * MD5               : {WHITE}{hashes.get('md5', 'N/A')}{RESET}")
+        print(f"  * SHA-1             : {WHITE}{hashes.get('sha1', 'N/A')}{RESET}")
+        print(f"  * SHA-256           : {WHITE}{hashes.get('sha256', 'N/A')}{RESET}")
 
         # Magic Bytes
         print(f"\n{YELLOW}[+] VERIFIKASI MAGIC BYTES:{RESET}")
         is_spoofed = magic.get("is_extension_spoofed", False)
-        spoof_badge = f"{RED}⚠️ SPOOFED (Ekstensi dipalsukan!){RESET}" if is_spoofed else f"{GREEN}Valid (Tidak ada pemalsuan) ✔{RESET}"
-        print(f"  • Tipe File Asli    : {WHITE}{magic.get('detected_file_type', 'Unknown')}{RESET}")
-        print(f"  • Status Ekstensi   : {spoof_badge}")
+        spoof_badge = f"{RED}[PERINGATAN] Ekstensi dipalsukan / Spoofed!{RESET}" if is_spoofed else f"{GREEN}Valid (Sesuai signature) [OK]{RESET}"
+        print(f"  * Tipe File Asli    : {WHITE}{magic.get('detected_file_type', 'Unknown')}{RESET}")
+        print(f"  * Status Ekstensi   : {spoof_badge}")
 
         # EXIF
         print(f"\n{YELLOW}[+] METADATA KAMERA & EXIF:{RESET}")
         if exif.get("has_exif"):
             camera = f"{exif.get('camera_make', '')} {exif.get('camera_model', '')}".strip()
-            print(f"  • Perangkat/Kamera  : {WHITE}{camera or 'N/A'}{RESET}")
-            print(f"  • Software Editor   : {WHITE}{exif.get('software', 'N/A')}{RESET}")
-            print(f"  • Waktu Pemotretan  : {WHITE}{exif.get('datetime_original', 'N/A')}{RESET}")
+            print(f"  * Perangkat/Kamera  : {WHITE}{camera or 'N/A'}{RESET}")
+            print(f"  * Software Editor   : {WHITE}{exif.get('software', 'N/A')}{RESET}")
+            print(f"  * Waktu Pemotretan  : {WHITE}{exif.get('datetime_original', 'N/A')}{RESET}")
             gps = exif.get("gps_coordinates")
             if gps:
-                print(f"  • Koordinat GPS     : {GREEN}Lat: {gps.get('latitude')}, Lon: {gps.get('longitude')}{RESET}")
-                print(f"  • Google Maps URL   : {CYAN}{gps.get('google_maps_url')}{RESET}")
+                print(f"  * Koordinat GPS     : {GREEN}Lat: {gps.get('latitude')}, Lon: {gps.get('longitude')}{RESET}")
+                print(f"  * Google Maps URL   : {CYAN}{gps.get('google_maps_url')}{RESET}")
         else:
-            print(f"  • {WHITE}Tidak ditemukan metadata EXIF pada berkas ini.{RESET}")
+            print(f"  * {WHITE}Tidak ditemukan metadata EXIF pada berkas ini.{RESET}")
 
         # Steganography & Appended Data
         print(f"\n{YELLOW}[+] DETEKSI STEGANOGRAFI & INTEGRITAS BINARY:{RESET}")
         if stego.get("appended_data_detected"):
-            print(f"  • Appended Data     : {YELLOW}Terdeteksi {stego.get('appended_data_size_bytes')} bytes setelah marker EOF (Potensi payload tersembunyi!) ⚠️{RESET}")
+            print(f"  * Appended Data     : {YELLOW}[PERINGATAN] Terdeteksi {stego.get('appended_data_size_bytes')} bytes setelah marker EOF (Potensi payload tersembunyi!){RESET}")
         else:
-            print(f"  • Appended Data     : {GREEN}Bersih (Tidak ada data tambahan setelah EOF) ✔{RESET}")
+            print(f"  * Appended Data     : {GREEN}Bersih (Tidak ada data tersembunyi setelah EOF) [OK]{RESET}")
 
         if stego.get("embedded_zip_detected"):
-            print(f"  • Embedded Archive  : {RED}Terdeteksi arsip ZIP tersembunyi di dalam gambar! ⚠️{RESET}")
+            print(f"  * Embedded Archive  : {RED}[PERINGATAN] Terdeteksi arsip ZIP tersembunyi di dalam gambar!{RESET}")
 
         strings_sample = stego.get("embedded_hidden_strings_sample", [])
         if strings_sample:
-            print(f"  • Extracted Strings : {CYAN}{', '.join(strings_sample[:3])}{RESET}")
+            print(f"  * Extracted Strings : {CYAN}{', '.join(strings_sample[:3])}{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 
-    async def run(self, target: str, target_type: str = "phone", show_banner: bool = True, save_json: bool = True, save_html: bool = False) -> Dict[str, Any]:
+    async def run(
+        self,
+        target: str,
+        target_type: str = "phone",
+        module_filter: Optional[List[str]] = None,
+        scope: str = "default",
+        show_banner: bool = True,
+        save_json: bool = True,
+        output_file: Optional[str] = None,
+        save_html: bool = False
+    ) -> Dict[str, Any]:
         if show_banner:
             self.print_banner()
 
         type_labels = {
             "phone": "Phone Intelligence (Telekomunikasi & Sosmed)",
-            "web": "Web & Infrastructure Intelligence (DNS, Tech Stack, Auth)",
-            "file": "Media & File Forensics (EXIF, Hash, Stego, Integrity)"
+            "web": "Web & Infrastructure Intelligence (WhatWeb, WAF, DNS)",
+            "file": "Media & File Forensics (EXIF, Hash, Stego, Integrity)",
+            "all": "All Reconnaissance Domains"
         }
         
         print(f"[*] Target Reconnaissance : {WHITE}{target}{RESET}")
         print(f"[*] Tipe Domain          : {CYAN}{type_labels.get(target_type, target_type.upper())}{RESET}")
+        print(f"[*] Scope Penyelidikan   : {GREEN}{scope.upper()}{RESET}")
         print(f"[*] Waktu Mulai          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
         print(f"[*] Memuat Modul Dinamis...")
         
-        # 1. Dynamic Discovery & Loading Modul berdasarkan target_type
-        modules = self.plugin_loader.discover_and_load(target_type=target_type)
+        # 1. Dynamic Discovery & Loading Modul
+        modules = self.plugin_loader.discover_and_load(target_type=target_type, module_filter=module_filter)
         print(f"[*] Total {len(modules)} Modul Siap Dijalankan.\n")
         
         results: Dict[str, Any] = {
             "meta": {
                 "target": target,
                 "target_type": target_type,
+                "scope": scope,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "version": self.config_manager.get("app.version", "2.0.0"),
+                "version": VERSION,
                 "total_modules": len(modules)
             }
         }
@@ -318,7 +359,7 @@ class PATRICTOrchestrator:
         # Tutup async session setelah scanning selesai
         await self.async_client.close()
         
-        print(f"\n{GREEN}[✔] Pemindaian Intelijen Selesai.{RESET}")
+        print(f"\n{GREEN}[+] Pemindaian Selesai.{RESET}")
         
         # 3. Cetak Hasil Lengkap Langsung di Layar Terminal
         if target_type == "phone":
@@ -327,11 +368,22 @@ class PATRICTOrchestrator:
             self._print_web_terminal(target, results)
         elif target_type == "file":
             self._print_file_terminal(target, results)
+        else:
+            if "phone_osint" in results or "caller_id_osint" in results:
+                self._print_phone_terminal(target, results)
+            if "web_osint" in results:
+                self._print_web_terminal(target, results)
+            if "file_forensics" in results:
+                self._print_file_terminal(target, results)
 
-        # 4. Simpan File JSON di Direktori Tempat Terminal Aktif Dijalankan (Current Working Directory)
+        # 4. Simpan File JSON di Direktori Tempat Terminal Aktif Dijalankan
         if save_json:
-            safe_name = target.replace("+", "").replace("://", "_").replace("/", "_").replace(":", "_").replace(" ", "_")
-            cwd_json_path = os.path.join(os.getcwd(), f"report_{target_type}_{safe_name}.json")
+            if output_file:
+                cwd_json_path = os.path.abspath(output_file)
+            else:
+                safe_name = target.replace("+", "").replace("://", "_").replace("/", "_").replace(":", "_").replace(" ", "_")
+                cwd_json_path = os.path.join(os.getcwd(), f"report_{target_type}_{safe_name}.json")
+                
             try:
                 with open(cwd_json_path, "w", encoding="utf-8") as f:
                     json.dump(results, f, indent=2, ensure_ascii=False)
@@ -360,33 +412,115 @@ def detect_target_type(target: str) -> str:
         return "file"
     return "phone"
 
+def print_help_menu():
+    help_text = rf"""
+{BLUE}==================================================================={RESET}
+{BLUE}  ____       _  _____ ____  ___ ____ _____ {RESET}       {WHITE} ___  ____ ___ _   _ _____ {RESET}
+{BLUE} |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|{RESET}      {WHITE}/ _ \/ ___|_ _| \ | |_   _|{RESET}
+{BLUE} | |_) |   / _ \ | | | |_) || | |     | |  {CYAN}____ {WHITE}| | | \___ \| ||  \| | | |  {RESET}
+{BLUE} |  __/   / ___ \| | |  _ < | | |___  | | {CYAN}|____|{WHITE}| |_| |___) | || |\  | | |  {RESET}
+{BLUE} |_|     /_/   \_\_| |_| \_\___\____| |_|  {RESET}      {WHITE}\___/|____/___|_| \_| |_|  {RESET}
+{BLUE}==================================================================={RESET}
+                        {BLUE}PATRICT{WHITE}-{CYAN}OSINT {WHITE}v{VERSION}{RESET}
+{BLUE}==================================================================={RESET}
+
+{YELLOW}PENGGUNAAN:{RESET}
+  osint [target] [opsi]
+  osint -t <target> -m <mode> [opsi]
+
+{YELLOW}DESKRIPSI:{RESET}
+  PATRICT-OSINT adalah framework intelijen sumber terbuka (OSINT) dan forensik
+  digital modular generasi baru untuk investigasi multi-domain profesional.
+
+{YELLOW}DOMAIN TARGET:{RESET}
+  {CYAN}phone{RESET}       Penyelidikan nomor telepon internasional, HLR, operator & sosmed
+  {CYAN}web{RESET}         Reconnaissance web, WhatWeb tech stack, WAF, redirect & DNS
+  {CYAN}file{RESET}        Forensik media/gambar, EXIF, GPS coordinates, hash & steganografi
+  {CYAN}all{RESET}         Jalankan seluruh modul tanpa batasan domain
+
+{YELLOW}OPSI / FLAGS:{RESET}
+  {GREEN}-t, --target <str>{RESET}        Target input (Nomor Telepon, URL Web, atau Path Berkas)
+  {GREEN}-m, --mode <mode>{RESET}         Domain mode: phone, web, file, all (Default: auto-detect)
+  {GREEN}-M, --modules <list>{RESET}      Pilih modul spesifik (contoh: -M web_osint atau -M phone_osint,social_osint)
+  {GREEN}-S, --scope <level>{RESET}       Cakupan pemindaian: quick, default, deep, full (Default: default)
+  {GREEN}-T, --timeout <int>{RESET}       Batas waktu koneksi HTTP dalam detik (Default: 10)
+  {GREEN}-c, --config <path>{RESET}       Path ke file konfigurasi YAML kustom
+  {GREEN}-o, --output <path>{RESET}       Kustom path / nama file penyimpanan JSON
+      {GREEN}--html{RESET}                Buat file laporan HTML interaktif di folder output/
+      {GREEN}--no-json{RESET}             Jangan simpan file laporan JSON ke disk
+  {GREEN}-v, --version{RESET}             Tampilkan informasi versi framework
+  {GREEN}-h, --help{RESET}                Tampilkan menu bantuan lengkap ini
+
+{YELLOW}PROFIL CAKUPAN (SCOPE):{RESET}
+  {WHITE}quick{RESET}       Pemindaian cepat: validasi dasar, header, dan metadata inti.
+  {WHITE}default{RESET}     Pemindaian standar: seluruh modul aktif dalam domain target.
+  {WHITE}deep{RESET}        Pemindaian mendalam: probe endpoint, permutasi email & reverse DNS.
+  {WHITE}full{RESET}        Pemindaian penuh: aktifkan seluruh modul & dorking agresif.
+
+{YELLOW}CONTOH PENGGUNAAN:{RESET}
+  # Penyelidikan Nomor Telepon
+  osint +6281234567890
+  osint -t +6281234567890 -m phone -S deep
+
+  # Reconnaissance Web & Tech Stack ala WhatWeb
+  osint https://target.com
+  osint -t https://target.com -m web -T 15 -S full
+
+  # Analisis Forensik Gambar & Steganografi
+  osint /path/to/foto.jpg
+  osint -t /path/to/foto.jpg -m file
+
+  # Eksekusi Modul Spesifik & Output Kustom
+  osint -t +6281234567890 -M phone_osint,whatsapp_osint -o hasil_wa.json
+"""
+    print(help_text)
+
 async def main_async():
+    # Periksa -h atau --help atau -help
+    if any(arg in sys.argv for arg in ["-h", "--help", "-help", "help"]):
+        print_help_menu()
+        sys.exit(0)
+
+    if any(arg in sys.argv for arg in ["-v", "--version", "-version", "version"]):
+        print(f"PATRICT-OSINT Framework v{VERSION}")
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
-        description="PATRICT-OSINT Framework v2.0 - Automated Multi-Domain Intelligence & Forensics",
-        usage="osint [target] [options]"
+        description="PATRICT-OSINT Framework v2.2.0 - Automated Multi-Domain Intelligence & Forensics",
+        usage="osint [target] [options]",
+        add_help=False
     )
     parser.add_argument("target_pos", nargs="?", help="Target penyelidikan (nomor telepon, URL/domain, atau file gambar)", default=None)
     parser.add_argument("-t", "--target", help="Target penyelidikan (opsional jika menggunakan positional argument)", default=None)
-    parser.add_argument("-m", "--mode", choices=["phone", "web", "file"], help="Mode penyelidikan (phone, web, file)", default=None)
+    parser.add_argument("-m", "--mode", choices=["phone", "web", "file", "all"], help="Mode penyelidikan (phone, web, file, all)", default=None)
+    parser.add_argument("-M", "--modules", help="Daftar modul spesifik dipisahkan koma (contoh: -M web_osint)", default=None)
+    parser.add_argument("-S", "--scope", choices=["quick", "default", "deep", "full"], help="Cakupan penyelidikan (quick, default, deep, full)", default="default")
+    parser.add_argument("-T", "--timeout", type=int, help="Timeout koneksi HTTP dalam detik", default=None)
     parser.add_argument("-c", "--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
+    parser.add_argument("-o", "--output", help="Path / nama file output JSON kustom", default=None)
     parser.add_argument("--html", action="store_true", help="Ekspor laporan HTML ke folder output/", default=False)
     parser.add_argument("--no-json", action="store_true", help="Jangan simpan file JSON di direktori aktif", default=False)
     args = parser.parse_args()
     
-    orchestrator = PATRICTOrchestrator(config_path=args.config)
+    orchestrator = PATRICTOrchestrator(config_path=args.config, timeout=args.timeout)
     
     target = args.target_pos or args.target
     mode = args.mode
+    
+    # Parse module filter jika ada
+    module_filter = None
+    if args.modules:
+        module_filter = [m.strip() for m in args.modules.split(",") if m.strip()]
     
     EXIT_KEYWORDS = {"exit", "quit", "q", ":q", "keluar", "stop", "bye", "cancel", "0"}
     
     if not target:
         orchestrator.print_banner()
         print(f"{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}")
-        print(f"  {CYAN}[1]{RESET} 📞 Phone Intelligence       (Nomor Telepon Global / ITU-T E.164)")
-        print(f"  {CYAN}[2]{RESET} 🌐 Web & Tech Recon         (URL / Domain / Tech Stack / Network / Auth)")
-        print(f"  {CYAN}[3]{RESET} 🖼️ Media & File Forensics   (Image EXIF / Steganografi / Hash / Metadata)")
-        print(f"  {CYAN}[0]{RESET} 🚪 Keluar (Exit)\n")
+        print(f"  {CYAN}[1]{RESET} Phone Intelligence       (Nomor Telepon Global / ITU-T E.164)")
+        print(f"  {CYAN}[2]{RESET} Web & Tech Recon         (URL / Domain / WhatWeb Stack / WAF / DNS)")
+        print(f"  {CYAN}[3]{RESET} Media & File Forensics   (Berkas / Gambar / EXIF / Hashes / Stego)")
+        print(f"  {CYAN}[0]{RESET} Keluar (Exit)\n")
         
         try:
             choice = input(f"{YELLOW}[?]{RESET} Masukkan Pilihan [1-3 / 0]: ").strip()
@@ -459,8 +593,11 @@ async def main_async():
     await orchestrator.run(
         target,
         target_type=mode,
+        module_filter=module_filter,
+        scope=args.scope,
         show_banner=False,
         save_json=not args.no_json,
+        output_file=args.output,
         save_html=args.html
     )
 

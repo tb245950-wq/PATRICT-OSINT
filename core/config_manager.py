@@ -139,3 +139,12 @@ class ConfigManager:
         
     def is_module_enabled(self, module_id: str) -> bool:
         return self.get(f"modules.{module_id}", True)
+
+    def set(self, key_path: str, value: Any):
+        keys = key_path.split(".")
+        val = self.config
+        for k in keys[:-1]:
+            if k not in val or not isinstance(val[k], dict):
+                val[k] = {}
+            val = val[k]
+        val[keys[-1]] = value

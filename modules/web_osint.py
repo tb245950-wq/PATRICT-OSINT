@@ -2,6 +2,7 @@ import re
 import json
 import socket
 import base64
+import hashlib
 import urllib.parse
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
@@ -17,8 +18,8 @@ from core.base_module import BaseOSINTModule
 class WebOSINT(BaseOSINTModule):
     name: str = "Web & Infrastructure Intelligence"
     module_id: str = "web_osint"
-    description: str = "Analisis mendalam web: HTTP methods, redirect chains, auth/JWT/Sanctum tokens, tech stack, DNS, & server GeoIP."
-    version: str = "2.0.0"
+    description: str = "Analisis mendalam web ala WhatWeb: HTTP headers, security headers, WAF, redirect chain, auth/JWT/Sanctum, tech stack, DNS, endpoints & GeoIP."
+    version: str = "2.2.0"
     priority: int = 1
     target_type: str = "web"
 
@@ -70,7 +71,6 @@ class WebOSINT(BaseOSINTModule):
             }
         }
 
-        # Periksa semua cookie names & values
         for c_name, c_val in cookies.items():
             c_name_lower = c_name.lower()
             val_str = str(c_val)
@@ -79,7 +79,7 @@ class WebOSINT(BaseOSINTModule):
             if val_str.startswith("eyJ") and "." in val_str:
                 jwt_data = self._decode_jwt(val_str)
                 if jwt_data:
-                    auth_findings["auth_type_detected"].append(f"JWT (JSON Web Token in '{c_name}')")
+                    auth_findings["auth_type_detected"].append(f"JWT (in '{c_name}')")
                     auth_findings["jwt_tokens"].append({
                         "cookie_name": c_name,
                         "header": jwt_data["header"],
@@ -88,39 +88,39 @@ class WebOSINT(BaseOSINTModule):
 
             # Deteksi Laravel Sanctum / Laravel Session
             if "laravel_session" in c_name_lower or "xsrf-token" in c_name_lower:
-                auth_findings["auth_type_detected"].append("Laravel (Session / CSRF / Sanctum)")
+                auth_findings["auth_type_detected"].append("Laravel (Session/Sanctum)")
                 auth_findings["session_cookies"].append({"name": c_name, "framework": "Laravel"})
 
             # Deteksi Django
             elif "sessionid" in c_name_lower or "csrftoken" in c_name_lower:
-                auth_findings["auth_type_detected"].append("Django (Session / CSRF)")
+                auth_findings["auth_type_detected"].append("Django (Session/CSRF)")
                 auth_findings["session_cookies"].append({"name": c_name, "framework": "Django"})
 
-            # Deteksi PHP Standard
+            # Deteksi PHP Native
             elif "phpsessid" in c_name_lower:
-                auth_findings["auth_type_detected"].append("PHP Native Session")
+                auth_findings["auth_type_detected"].append("PHP Native (PHPSESSID)")
                 auth_findings["session_cookies"].append({"name": c_name, "framework": "PHP Native"})
 
             # Deteksi ASP.NET
             elif "asp.net" in c_name_lower or ".aspnetcore" in c_name_lower:
-                auth_findings["auth_type_detected"].append("ASP.NET / .NET Core Session")
+                auth_findings["auth_type_detected"].append("ASP.NET / .NET Core")
                 auth_findings["session_cookies"].append({"name": c_name, "framework": "ASP.NET"})
 
             # Deteksi Express.js / Node
             elif "connect.sid" in c_name_lower:
-                auth_findings["auth_type_detected"].append("Express.js (Node.js session)")
+                auth_findings["auth_type_detected"].append("Express.js (Node.js)")
                 auth_findings["session_cookies"].append({"name": c_name, "framework": "Express.js"})
 
             # Deteksi Java Spring
             elif "jsessionid" in c_name_lower:
-                auth_findings["auth_type_detected"].append("Java Spring / Tomcat Session")
-                auth_findings["session_cookies"].append({"name": c_name, "framework": "Java / Spring"})
+                auth_findings["auth_type_detected"].append("Java Spring / Tomcat")
+                auth_findings["session_cookies"].append({"name": c_name, "framework": "Java Spring"})
 
             # Deteksi Cloudflare
             elif "__cf" in c_name_lower or "cf_clearance" in c_name_lower:
-                auth_findings["auth_type_detected"].append("Cloudflare Protection / Bot Management")
+                auth_findings["auth_type_detected"].append("Cloudflare Clearance")
 
-        # Periksa Header Set-Cookie
+        # Periksa Header Set-Cookie Flags
         set_cookie_raw = str(headers.get("set-cookie", "") or headers.get("Set-Cookie", ""))
         if "httponly" in set_cookie_raw.lower():
             auth_findings["security_flags"]["httponly"] = True
@@ -133,94 +133,248 @@ class WebOSINT(BaseOSINTModule):
         elif "samesite=none" in set_cookie_raw.lower():
             auth_findings["security_flags"]["samesite"] = "None"
 
-        # Unique auth types
         auth_findings["auth_type_detected"] = list(set(auth_findings["auth_type_detected"]))
         if not auth_findings["auth_type_detected"]:
             auth_findings["auth_type_detected"].append("Standard / Stateless / None")
 
         return auth_findings
 
+    def _detect_waf(self, headers: Dict[str, Any], html_content: str) -> List[str]:
+        """Mendeteksi Web Application Firewall (WAF) & Protection Layer"""
+        waf_detected = []
+        headers_str = " ".join([f"{k}: {v}" for k, v in headers.items()]).lower()
+        html_lower = html_content.lower()
+
+        if "cf-ray" in headers_str or "__cfduid" in headers_str or "cloudflare" in headers_str:
+            waf_detected.append("Cloudflare WAF / CDN")
+        if "x-amz-cf-id" in headers_str or "awselb" in headers_str or "aws-waf" in headers_str:
+            waf_detected.append("AWS CloudFront / AWS WAF")
+        if "x-akamai" in headers_str or "akamai" in headers_str:
+            waf_detected.append("Akamai Edge / Kona WAF")
+        if "x-sucuri" in headers_str or "sucuri" in headers_str:
+            waf_detected.append("Sucuri CloudProxy WAF")
+        if "x-iinfo" in headers_str or "incap_ses" in headers_str or "visid_incap" in headers_str:
+            waf_detected.append("Imperva Incapsula WAF")
+        if "wordfence" in html_lower or "wordfence" in headers_str:
+            waf_detected.append("Wordfence Security (WordPress)")
+        if "mod_security" in headers_str or "modsecurity" in headers_str:
+            waf_detected.append("ModSecurity OWASP WAF")
+        if "f5_cspm" in headers_str or "bigip" in headers_str or "f5" in headers_str:
+            waf_detected.append("F5 BIG-IP ASM")
+
+        return list(set(waf_detected))
+
     def _detect_tech_stack(self, headers: Dict[str, Any], html_content: str) -> Dict[str, List[str]]:
-        """Mendeteksi stack teknologi (Web Server, Framework, CMS, Frontend, CDN)"""
+        """Mendeteksi stack teknologi lengkap ala WhatWeb (Web Server, Framework, CMS, Frontend, CDN, Language)"""
         stack = {
             "web_servers": [],
+            "programming_languages": [],
             "backend_frameworks": [],
             "frontend_libraries": [],
             "cms_and_platforms": [],
+            "waf_and_security": [],
             "analytics_and_cdn": []
         }
 
         headers_str = " ".join([f"{k}: {v}" for k, v in headers.items()]).lower()
         html_lower = html_content.lower()
 
-        # 1. Web Servers
+        # 1. Web Servers & Proxies
         server_header = str(headers.get("server", "") or headers.get("Server", ""))
         if server_header:
             stack["web_servers"].append(server_header)
-        elif "cloudflare" in headers_str:
+        if "cloudflare" in headers_str:
             stack["web_servers"].append("Cloudflare Edge Server")
-        elif "nginx" in html_lower or "nginx" in headers_str:
+        if "nginx" in html_lower or "nginx" in headers_str:
             stack["web_servers"].append("Nginx")
-        elif "apache" in html_lower or "apache" in headers_str:
+        if "apache" in html_lower or "apache" in headers_str:
             stack["web_servers"].append("Apache HTTP Server")
+        if "litespeed" in headers_str or "litespeed" in html_lower:
+            stack["web_servers"].append("LiteSpeed Web Server")
+        if "caddy" in headers_str:
+            stack["web_servers"].append("Caddy Web Server")
+        if "microsoft-iis" in headers_str or "iis" in headers_str:
+            stack["web_servers"].append("Microsoft IIS")
+        if "openresty" in headers_str:
+            stack["web_servers"].append("OpenResty (Nginx+Lua)")
 
-        # 2. Backend & Frameworks
+        # 2. Languages & Runtimes
         powered_by = str(headers.get("x-powered-by", "") or headers.get("X-Powered-By", ""))
         if powered_by:
-            stack["backend_frameworks"].append(f"X-Powered-By: {powered_by}")
+            stack["programming_languages"].append(f"X-Powered-By: {powered_by}")
 
+        if "php" in headers_str or "phpsessid" in headers_str or ".php" in html_lower:
+            stack["programming_languages"].append("PHP")
+        if "python" in powered_by.lower() or "django" in html_lower or "flask" in html_lower or "fastapi" in html_lower:
+            stack["programming_languages"].append("Python")
+        if "node" in powered_by.lower() or "express" in powered_by.lower() or "__next" in html_lower or "__nuxt" in html_lower:
+            stack["programming_languages"].append("Node.js / JavaScript")
+        if "ruby" in headers_str or "phusion" in headers_str or "passenger" in headers_str:
+            stack["programming_languages"].append("Ruby")
+        if "asp.net" in headers_str or ".aspnetcore" in headers_str:
+            stack["programming_languages"].append("C# / .NET Core / ASP.NET")
+        if "java" in headers_str or "jsessionid" in headers_str or "servlet" in headers_str:
+            stack["programming_languages"].append("Java / JVM")
+
+        # 3. Backend & Fullstack Frameworks
         if "laravel" in html_lower or "laravel" in headers_str or "xsrf-token" in headers_str:
             stack["backend_frameworks"].append("Laravel (PHP)")
+        if "symfony" in html_lower or "symfony" in headers_str:
+            stack["backend_frameworks"].append("Symfony (PHP)")
+        if "codeigniter" in html_lower or "ci_session" in headers_str:
+            stack["backend_frameworks"].append("CodeIgniter (PHP)")
         if "django" in html_lower or "csrftoken" in headers_str:
             stack["backend_frameworks"].append("Django (Python)")
-        if "express" in powered_by.lower() or "next.js" in html_lower or "__next" in html_lower:
-            if "__next" in html_lower:
-                stack["backend_frameworks"].append("Next.js (React/Node)")
-            else:
-                stack["backend_frameworks"].append("Node.js / Express")
-        if "nuxt" in html_lower or "__nuxt" in html_lower:
-            stack["backend_frameworks"].append("Nuxt.js (Vue/Node)")
-        if "rails" in html_lower or "phusion" in headers_str:
+        if "fastapi" in html_lower or "fastapi" in headers_str:
+            stack["backend_frameworks"].append("FastAPI (Python)")
+        if "flask" in html_lower:
+            stack["backend_frameworks"].append("Flask (Python)")
+        if "spring" in html_lower or "jsessionid" in headers_str:
+            stack["backend_frameworks"].append("Spring Boot (Java)")
+        if "rails" in html_lower or "actionpack" in headers_str:
             stack["backend_frameworks"].append("Ruby on Rails")
+        if "__next" in html_lower or "next.js" in html_lower:
+            stack["backend_frameworks"].append("Next.js (React Framework)")
+        if "__nuxt" in html_lower or "nuxt.js" in html_lower:
+            stack["backend_frameworks"].append("Nuxt.js (Vue Framework)")
+        if "remix" in html_lower:
+            stack["backend_frameworks"].append("Remix (Fullstack React)")
+        if "sveltekit" in html_lower:
+            stack["backend_frameworks"].append("SvelteKit")
+        if "astro" in html_lower or "astro-island" in html_lower:
+            stack["backend_frameworks"].append("Astro")
 
-        # 3. CMS & Platforms
-        if "wp-content" in html_lower or "wp-includes" in html_lower:
-            stack["cms_and_platforms"].append("WordPress")
+        # 4. CMS & Platforms
+        if "wp-content" in html_lower or "wp-includes" in html_lower or "wp-json" in html_lower:
+            # Cari versi WordPress jika ada
+            wp_version = ""
+            m_gen = re.search(r'<meta\s+name=["\']generator["\']\s+content=["\']WordPress\s*([\d.]*)["\']', html_content, re.I)
+            if m_gen and m_gen.group(1):
+                wp_version = f" (v{m_gen.group(1)})"
+            stack["cms_and_platforms"].append(f"WordPress{wp_version}")
         if "drupal" in html_lower or "drupal.js" in html_lower:
-            stack["cms_and_platforms"].append("Drupal")
+            stack["cms_and_platforms"].append("Drupal CMS")
         if "joomla" in html_lower:
-            stack["cms_and_platforms"].append("Joomla")
-        if "shopify" in html_lower or "myshopify.com" in html_lower:
-            stack["cms_and_platforms"].append("Shopify")
-        if "ghost" in html_lower:
+            stack["cms_and_platforms"].append("Joomla CMS")
+        if "shopify" in html_lower or "myshopify.com" in html_lower or "cdn.shopify.com" in html_lower:
+            stack["cms_and_platforms"].append("Shopify E-Commerce")
+        if "woocommerce" in html_lower or "wc-ajax" in html_lower:
+            stack["cms_and_platforms"].append("WooCommerce")
+        if "magento" in html_lower or "mage/cookies" in html_lower:
+            stack["cms_and_platforms"].append("Magento")
+        if "ghost" in html_lower or "ghost-root" in html_lower:
             stack["cms_and_platforms"].append("Ghost CMS")
+        if "wix.com" in html_lower:
+            stack["cms_and_platforms"].append("Wix Website Builder")
+        if "squarespace" in html_lower:
+            stack["cms_and_platforms"].append("Squarespace")
+        if "webflow" in html_lower:
+            stack["cms_and_platforms"].append("Webflow")
+        if "strapi" in html_lower:
+            stack["cms_and_platforms"].append("Strapi Headless CMS")
 
-        # 4. Frontend Libraries
+        # 5. Frontend UI & JavaScript Libraries
         if "react" in html_lower or "react-dom" in html_lower or "__react" in html_lower:
             stack["frontend_libraries"].append("React")
         if "vue" in html_lower or "vuejs" in html_lower or "v-" in html_lower:
             stack["frontend_libraries"].append("Vue.js")
-        if "bootstrap" in html_lower:
+        if "angular" in html_lower or "ng-" in html_lower or "ng-version" in html_lower:
+            stack["frontend_libraries"].append("Angular")
+        if "svelte" in html_lower:
+            stack["frontend_libraries"].append("Svelte")
+        if "bootstrap" in html_lower or "bootstrap.min.css" in html_lower:
             stack["frontend_libraries"].append("Bootstrap CSS")
-        if "tailwind" in html_lower:
+        if "tailwind" in html_lower or "tailwindcss" in html_lower:
             stack["frontend_libraries"].append("Tailwind CSS")
         if "jquery" in html_lower or "jquery.min.js" in html_lower:
             stack["frontend_libraries"].append("jQuery")
         if "alpine" in html_lower or "x-data" in html_lower:
             stack["frontend_libraries"].append("Alpine.js")
+        if "htmx" in html_lower or "hx-get" in html_lower or "hx-post" in html_lower:
+            stack["frontend_libraries"].append("HTMX")
+        if "fontawesome" in html_lower or "fa-" in html_lower:
+            stack["frontend_libraries"].append("FontAwesome Icons")
 
-        # 5. CDN & Analytics
+        # 6. WAF & Security Layer
+        stack["waf_and_security"] = self._detect_waf(headers, html_content)
+
+        # 7. CDN & Analytics
         if "cloudflare" in headers_str or "cf-ray" in headers_str:
             stack["analytics_and_cdn"].append("Cloudflare CDN")
         if "cloudfront" in headers_str or "x-amz-cf-id" in headers_str:
             stack["analytics_and_cdn"].append("AWS CloudFront")
-        if "googletagmanager.com" in html_lower or "google-analytics.com" in html_lower:
-            stack["analytics_and_cdn"].append("Google Analytics / Tag Manager")
+        if "fastly" in headers_str:
+            stack["analytics_and_cdn"].append("Fastly CDN")
+        if "googletagmanager.com" in html_lower or "google-analytics.com" in html_lower or "gtag(" in html_lower:
+            stack["analytics_and_cdn"].append("Google Analytics / GTM")
+        if "hotjar" in html_lower:
+            stack["analytics_and_cdn"].append("Hotjar Analytics")
 
         for key in stack:
             stack[key] = list(set(stack[key]))
 
         return stack
+
+    def _extract_page_metadata(self, html_content: str) -> Dict[str, str]:
+        """Mengekstrak judul halaman, meta description, generator, dan meta tag"""
+        meta_info = {
+            "title": "",
+            "description": "",
+            "generator": "",
+            "emails_found": []
+        }
+
+        # Title
+        t_match = re.search(r"<title>(.*?)</title>", html_content, re.IGNORECASE | re.DOTALL)
+        if t_match:
+            meta_info["title"] = t_match.group(1).strip()
+
+        # Meta Description
+        d_match = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html_content, re.IGNORECASE)
+        if d_match:
+            meta_info["description"] = d_match.group(1).strip()
+
+        # Meta Generator
+        g_match = re.search(r'<meta\s+name=["\']generator["\']\s+content=["\'](.*?)["\']', html_content, re.IGNORECASE)
+        if g_match:
+            meta_info["generator"] = g_match.group(1).strip()
+
+        # Email Scraping dari HTML
+        emails = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', html_content)
+        filtered_emails = [e for e in set(emails) if not e.endswith(('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp')) and len(e) < 50]
+        meta_info["emails_found"] = filtered_emails[:10]
+
+        return meta_info
+
+    async def _probe_interesting_endpoints(self, base_url: str) -> List[Dict[str, Any]]:
+        """Memeriksa keberadaan endpoint menarik (robots.txt, sitemap.xml, graphql, security.txt, swagger)"""
+        endpoints_to_check = [
+            ("robots.txt", "/robots.txt"),
+            ("Sitemap XML", "/sitemap.xml"),
+            ("Security TXT", "/.well-known/security.txt"),
+            ("GraphQL API", "/graphql"),
+            ("Swagger / OpenAPI", "/swagger-ui.html"),
+            ("API Docs", "/api-docs")
+        ]
+
+        detected = []
+        if not self.async_client:
+            return detected
+
+        for label, path in endpoints_to_check:
+            probe_url = urllib.parse.urljoin(base_url, path)
+            try:
+                status, _, _ = await self.async_client.get(probe_url)
+                if status in (200, 301, 302, 401, 403):
+                    detected.append({
+                        "name": label,
+                        "url": probe_url,
+                        "status": status
+                    })
+            except Exception:
+                pass
+
+        return detected
 
     def _resolve_dns(self, domain: str) -> Dict[str, Any]:
         """Melakukan resolusi DNS record A, AAAA, MX, NS, TXT, CNAME"""
@@ -250,7 +404,6 @@ class WebOSINT(BaseOSINTModule):
             return {}
 
         try:
-            # Gunakan IP API gratis untuk resolusi GeoIP server
             url = f"http://ip-api.com/json/{ip}?fields=status,country,regionName,city,lat,lon,isp,org,as,query"
             status, text, _ = await self.async_client.get(url)
             if status == 200:
@@ -280,12 +433,15 @@ class WebOSINT(BaseOSINTModule):
         results = {
             "target_url": url,
             "domain": domain,
+            "page_metadata": {},
             "http_methods_allowed": [],
             "redirect_chain": [],
             "final_url": url,
+            "final_status": 200,
             "security_headers": {},
             "auth_intelligence": {},
             "tech_stack": {},
+            "interesting_endpoints": [],
             "dns_records": {},
             "server_geoip": {}
         }
@@ -324,10 +480,8 @@ class WebOSINT(BaseOSINTModule):
         cookies_captured = {}
 
         try:
-            # Gunakan session aiohttp untuk menelusuri redirect
             session = await self.async_client.get_session()
             async with session.get(url, allow_redirects=True, timeout=12) as response:
-                # Catat history redirect
                 for resp in response.history:
                     redirect_chain.append({
                         "status_code": resp.status,
@@ -349,7 +503,10 @@ class WebOSINT(BaseOSINTModule):
 
         results["redirect_chain"] = redirect_chain
 
-        # 5. Security Headers Analysis
+        # 5. Ekstraksi Metadata Halaman & Scraping Email
+        results["page_metadata"] = self._extract_page_metadata(html_content)
+
+        # 6. Security Headers Analysis
         sec_header_keys = [
             "Strict-Transport-Security",
             "Content-Security-Policy",
@@ -365,10 +522,13 @@ class WebOSINT(BaseOSINTModule):
             sec_headers[h_key] = val if val else "Missing (Not Implemented)"
         results["security_headers"] = sec_headers
 
-        # 6. Auth & Cookies Intelligence
+        # 7. Auth & Cookies Intelligence
         results["auth_intelligence"] = self._analyze_cookies_and_auth(cookies_captured, final_headers)
 
-        # 7. Tech Stack Fingerprinting
+        # 8. Tech Stack Fingerprinting (WhatWeb Style)
         results["tech_stack"] = self._detect_tech_stack(final_headers, html_content)
+
+        # 9. Probe Endpoint Menarik (robots.txt, sitemap.xml, GraphQL, dll)
+        results["interesting_endpoints"] = await self._probe_interesting_endpoints(results["final_url"])
 
         return self.success_response(results, f"Pemindaian Web & Infrastruktur {domain} Berhasil.")

@@ -19,7 +19,7 @@ class PluginLoader:
         self.async_client = async_client
         self.loaded_modules: List[BaseOSINTModule] = []
         
-    def discover_and_load(self, target_type: Optional[str] = None) -> List[BaseOSINTModule]:
+    def discover_and_load(self, target_type: Optional[str] = None, module_filter: Optional[List[str]] = None) -> List[BaseOSINTModule]:
         self.loaded_modules = []
         
         target_dir = self.modules_dir
@@ -52,14 +52,20 @@ class PluginLoader:
                         for _, cls in inspect.getmembers(py_module, inspect.isclass):
                             if issubclass(cls, BaseOSINTModule) and cls is not BaseOSINTModule:
                                 mod_type = getattr(cls, 'target_type', 'phone')
-                                if target_type and target_type != 'all' and mod_type not in (target_type, 'all', 'any'):
+                                mod_id = getattr(cls, 'module_id', module_name)
+                                
+                                # Filter berdasarkan module_filter jika ditentukan
+                                if module_filter:
+                                    if mod_id not in module_filter and module_name not in module_filter:
+                                        continue
+                                elif target_type and target_type != 'all' and mod_type not in (target_type, 'all', 'any'):
                                     continue
                                     
                                 module_instance = cls(config=self.config, async_client=self.async_client)
                                 
                                 # Periksa apakah modul diaktifkan di config
                                 is_enabled = True
-                                if self.config:
+                                if self.config and not module_filter:
                                     is_enabled = self.config.is_module_enabled(module_instance.module_id)
                                     
                                 if is_enabled:
