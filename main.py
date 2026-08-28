@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
 # PATRICT-OSINT FRAMEWORK - MONOREPO ORCHESTRATOR
-# VERSION: 2.4.0
+# VERSION: 2.5.0
 # ============================================================
 
 import os
@@ -22,7 +22,7 @@ from visualizers.graph_engine import GraphEngine
 from reports.report_generator import ReportGenerator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 # ANSI Terminal Colors
 BLUE = "\033[1;34m"
