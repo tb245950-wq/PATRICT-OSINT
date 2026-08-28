@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PATRICT-OSINT | Web Intelligence Report - {{ domain }}</title>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131b2e;
+            --bg-card: #1b2640;
+            --accent-cyan: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-green: #00e676;
+            --accent-yellow: #ffd600;
+            --accent-red: #ff5252;
+            --text-main: #f0f4f8;
+            --text-muted: #8e9bb0;
+            --border-color: #2a3b5c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-primary); color: var(--text-main); line-height: 1.6; padding: 25px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        /* Header & Banner */
+        .header-card {
+            background: linear-gradient(135deg, #131b2e 0%, #1a233a 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 30px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .header-title h1 {
+            font-size: 24px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+        }
+        .header-title p { color: var(--text-muted); font-size: 14px; }
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-cyan { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
+        .badge-green { background: rgba(0, 230, 118, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge-red { background: rgba(255, 82, 82, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .badge-yellow { background: rgba(255, 214, 0, 0.15); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+
+        /* Grid Layout */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 25px; }
+        @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+        /* Cards */
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Key Value Tables */
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .info-table td:first-child { color: var(--text-muted); width: 35%; font-weight: 500; }
+        .info-table td:last-child { color: var(--text-main); font-family: monospace; word-break: break-all; }
+
+        /* Redirect timeline */
+        .timeline { list-style: none; margin-top: 10px; }
+        .timeline-item { position: relative; padding-left: 25px; margin-bottom: 12px; }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 6px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+        }
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: 9px;
+            top: 18px;
+            width: 2px;
+            height: calc(100% - 4px);
+            background: var(--border-color);
+        }
+        .timeline-item:last-child::after { display: none; }
+
+        /* Tech Pills */
+        .pill-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .pill {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: var(--text-main);
+        }
+
+        pre {
+            background: #060910;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #a5d6a7;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header-card">
+            <div class="header-title">
+                <h1>PATRICT-OSINT Web Intelligence</h1>
+                <p>Target Recon: <strong>{{ target_url }}</strong> (Domain: <strong>{{ domain }}</strong>)</p>
+            </div>
+            <div>
+                <span class="badge badge-cyan">Web Intelligence</span>
+                <span class="badge badge-green">Waktu: {{ timestamp }}</span>
+            </div>
+        </div>
+
+        <!-- Top Summary Grid -->
+        <div class="grid-3">
+            <!-- Server GeoIP -->
+            <div class="card">
+                <div class="card-header">🌐 Server & GeoIP Location</div>
+                <table class="info-table">
+                    <tr><td>IP Address</td><td>{{ server_geoip.ip or 'N/A' }}</td></tr>
+                    <tr><td>Lokasi</td><td>{{ server_geoip.city or '-' }}, {{ server_geoip.country or '-' }}</td></tr>
+                    <tr><td>Koordinat</td><td>{{ server_geoip.latitude or '-' }}, {{ server_geoip.longitude or '-' }}</td></tr>
+                    <tr><td>ISP / Org</td><td>{{ server_geoip.isp or server_geoip.organization or '-' }}</td></tr>
+                    <tr><td>ASN</td><td>{{ server_geoip.asn or '-' }}</td></tr>
+                    {% if server_geoip.maps_url %}
+                    <tr><td>Peta Server</td><td><a href="{{ server_geoip.maps_url }}" target="_blank" style="color: var(--accent-cyan);">Buka Google Maps ↗</a></td></tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <!-- HTTP Methods & Status -->
+            <div class="card">
+                <div class="card-header">⚡ HTTP Protocol & Methods</div>
+                <table class="info-table">
+                    <tr><td>Status Akhir</td><td><span class="badge badge-green">{{ web_data.final_status or 200 }} OK</span></td></tr>
+                    <tr><td>Final Destination</td><td>{{ web_data.final_url }}</td></tr>
+                    <tr>
+                        <td>Allowed Methods</td>
+                        <td>
+                            {% for m in web_data.http_methods_allowed %}
+                            <span class="badge badge-cyan" style="padding: 2px 6px; font-size: 10px;">{{ m }}</span>
+                            {% else %}
+                            <span style="color: var(--text-muted);">GET, HEAD</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Auth & Security Flags -->
+            <div class="card">
+                <div class="card-header">🔐 Authentication & Cookies</div>
+                <table class="info-table">
+                    <tr>
+                        <td>Tipe Auth/Session</td>
+                        <td>
+                            {% for a in web_data.auth_intelligence.auth_type_detected %}
+                            <span class="badge badge-yellow" style="margin-bottom: 4px;">{{ a }}</span><br>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Cookie Flags</td>
+                        <td>
+                            HttpOnly: <strong>{{ '✔' if web_data.auth_intelligence.security_flags.httponly else '✘' }}</strong> |
+                            Secure: <strong>{{ '✔' if web_data.auth_intelligence.security_flags.secure else '✘' }}</strong> |
+                            SameSite: <strong>{{ web_data.auth_intelligence.security_flags.samesite or 'Default' }}</strong>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tech Stack & Redirect Chain Grid -->
+        <div class="grid-2">
+            <!-- Tech Stack -->
+            <div class="card">
+                <div class="card-header">🛠️ Technology Stack Fingerprint</div>
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Web Servers:</div>
+                    <div class="pill-container">
+                        {% for s in web_data.tech_stack.web_servers %}
+                        <span class="pill">{{ s }}</span>
+                        {% else %}
+                        <span class="pill" style="color: var(--text-muted);">Hidden / Generic</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Backend & Frameworks:</div>
+                    <div class="pill-container">
+                        {% for f in web_data.tech_stack.backend_frameworks %}
+                        <span class="pill">{{ f }}</span>
+                        {% else %}
+                        <span class="pill" style="color: var(--text-muted);">Not Detected</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">CMS / Platform:</div>
+                    <div class="pill-container">
+                        {% for c in web_data.tech_stack.cms_and_platforms %}
+                        <span class="pill">{{ c }}</span>
+                        {% else %}
+                        <span class="pill" style="color: var(--text-muted);">Custom / None</span>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Frontend & Libraries:</div>
+                    <div class="pill-container">
+                        {% for fe in web_data.tech_stack.frontend_libraries %}
+                        <span class="pill">{{ fe }}</span>
+                        {% else %}
+                        <span class="pill" style="color: var(--text-muted);">Vanilla HTML/JS</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Redirect Chain -->
+            <div class="card">
+                <div class="card-header">🔀 Jalur Redirect (Redirect Chains)</div>
+                <ul class="timeline">
+                    <li class="timeline-item">
+                        <span class="badge badge-cyan" style="font-size: 10px;">MULAI</span>
+                        <span style="font-size: 12px; font-family: monospace;">{{ target_url }}</span>
+                    </li>
+                    {% for hop in web_data.redirect_chain %}
+                    <li class="timeline-item">
+                        <span class="badge badge-yellow" style="font-size: 10px;">{{ hop.status_code }}</span>
+                        <span style="font-size: 12px; font-family: monospace;">{{ hop.url }}</span>
+                    </li>
+                    {% endfor %}
+                    <li class="timeline-item">
+                        <span class="badge badge-green" style="font-size: 10px;">FINAL</span>
+                        <span style="font-size: 12px; font-family: monospace;">{{ web_data.final_url }}</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- DNS Records & JWT Decoded if exists -->
+        <div class="grid-2">
+            <!-- DNS Records -->
+            <div class="card">
+                <div class="card-header">📡 DNS Records Matrix</div>
+                <table class="info-table">
+                    {% for rtype, rlist in web_data.dns_records.items() %}
+                    {% if rlist %}
+                    <tr>
+                        <td><strong>{{ rtype }}</strong></td>
+                        <td>{{ rlist | join(', ') }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </table>
+            </div>
+
+            <!-- Security Headers -->
+            <div class="card">
+                <div class="card-header">🛡️ HTTP Security Headers</div>
+                <table class="info-table">
+                    {% for hname, hval in web_data.security_headers.items() %}
+                    <tr>
+                        <td>{{ hname }}</td>
+                        <td>
+                            {% if 'Missing' in hval %}
+                            <span style="color: var(--accent-red);">{{ hval }}</span>
+                            {% else %}
+                            <span style="color: var(--accent-green);">{{ hval }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
+
+        {% if web_data.auth_intelligence.jwt_tokens %}
+        <div class="card" style="margin-bottom: 25px;">
+            <div class="card-header">🔑 JWT Decoded Payload Tokens</div>
+            {% for jwt in web_data.auth_intelligence.jwt_tokens %}
+            <p style="font-size: 13px; color: var(--accent-yellow);">Cookie / Token: <strong>{{ jwt.cookie_name }}</strong></p>
+            <pre>Header:  {{ jwt.header | tojson(indent=2) }}
+Payload: {{ jwt.payload | tojson(indent=2) }}</pre>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px;">
+            PATRICT-OSINT v2.0 Web Reconnaissance Engine &bull; Generated Automatically
+        </div>
+    </div>
+</body>
+</html>

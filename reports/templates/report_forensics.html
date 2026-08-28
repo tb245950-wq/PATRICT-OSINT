@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PATRICT-OSINT | Media & File Forensics - {{ file_info.file_name }}</title>
+    <style>
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #131b2e;
+            --bg-card: #1b2640;
+            --accent-cyan: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-green: #00e676;
+            --accent-yellow: #ffd600;
+            --accent-red: #ff5252;
+            --text-main: #f0f4f8;
+            --text-muted: #8e9bb0;
+            --border-color: #2a3b5c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-primary); color: var(--text-main); line-height: 1.6; padding: 25px; }
+        .container { max-width: 1300px; margin: 0 auto; }
+
+        .header-card {
+            background: linear-gradient(135deg, #131b2e 0%, #1a233a 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px 30px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .header-title h1 {
+            font-size: 24px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+        }
+        .header-title p { color: var(--text-muted); font-size: 14px; }
+        .badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-cyan { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
+        .badge-green { background: rgba(0, 230, 118, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
+        .badge-red { background: rgba(255, 82, 82, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .badge-yellow { background: rgba(255, 214, 0, 0.15); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 25px; }
+        @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .info-table td:first-child { color: var(--text-muted); width: 35%; font-weight: 500; }
+        .info-table td:last-child { color: var(--text-main); font-family: monospace; word-break: break-all; }
+
+        pre {
+            background: #060910;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #81d4fa;
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            max-height: 250px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header-card">
+            <div class="header-title">
+                <h1>PATRICT-OSINT Media Forensics</h1>
+                <p>Target File: <strong>{{ file_info.file_name }}</strong> ({{ file_info.file_size_formatted }})</p>
+            </div>
+            <div>
+                <span class="badge badge-cyan">File Forensics</span>
+                <span class="badge badge-green">{{ timestamp }}</span>
+            </div>
+        </div>
+
+        <!-- Top Summary Grid -->
+        <div class="grid-3">
+            <!-- File Info -->
+            <div class="card">
+                <div class="card-header">📁 File Metadata & Specs</div>
+                <table class="info-table">
+                    <tr><td>Nama File</td><td>{{ file_info.file_name }}</td></tr>
+                    <tr><td>Lokasi Path</td><td>{{ file_info.file_path }}</td></tr>
+                    <tr><td>Ukuran File</td><td>{{ file_info.file_size_formatted }} ({{ file_info.file_size_bytes }} bytes)</td></tr>
+                    <tr><td>Ekstensi</td><td>{{ file_info.file_extension }}</td></tr>
+                </table>
+            </div>
+
+            <!-- Magic Bytes Validation -->
+            <div class="card">
+                <div class="card-header">🔍 Magic Bytes Verification</div>
+                <table class="info-table">
+                    <tr><td>Tipe File Terdeteksi</td><td><strong>{{ forensics_data.magic_bytes_inspection.detected_file_type }}</strong></td></tr>
+                    <tr>
+                        <td>Status Spoofing</td>
+                        <td>
+                            {% if forensics_data.magic_bytes_inspection.is_extension_spoofed %}
+                            <span class="badge badge-red">⚠️ SPOOFED EXTENSION</span>
+                            {% else %}
+                            <span class="badge badge-green">✔ VALID MATCH</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><td>Ekstensi yang Sesuai</td><td>{{ forensics_data.magic_bytes_inspection.expected_extensions | join(', ') }}</td></tr>
+                </table>
+            </div>
+
+            <!-- Steganography & Appended Data -->
+            <div class="card">
+                <div class="card-header">🧪 Steganography & Integrity</div>
+                <table class="info-table">
+                    <tr>
+                        <td>Appended Data (EOF)</td>
+                        <td>
+                            {% if forensics_data.steganography_and_integrity.appended_data_detected %}
+                            <span class="badge badge-yellow">⚠️ {{ forensics_data.steganography_and_integrity.appended_data_size_bytes }} bytes after EOF</span>
+                            {% else %}
+                            <span class="badge badge-green">✔ CLEAN EOF</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Embedded ZIP Archive</td>
+                        <td>
+                            {% if forensics_data.steganography_and_integrity.embedded_zip_detected %}
+                            <span class="badge badge-red">⚠️ ZIP ARCHIVE DETECTED</span>
+                            {% else %}
+                            <span class="badge badge-green">✔ NO ZIP FOUND</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Hashes & GPS / EXIF Grid -->
+        <div class="grid-2">
+            <!-- Cryptographic Hashes -->
+            <div class="card">
+                <div class="card-header">🔐 Cryptographic Hashes</div>
+                <table class="info-table">
+                    <tr><td>MD5</td><td>{{ forensics_data.cryptographic_hashes.md5 }}</td></tr>
+                    <tr><td>SHA-1</td><td>{{ forensics_data.cryptographic_hashes.sha1 }}</td></tr>
+                    <tr><td>SHA-256</td><td>{{ forensics_data.cryptographic_hashes.sha256 }}</td></tr>
+                    <tr><td>SHA-512</td><td style="font-size: 11px;">{{ forensics_data.cryptographic_hashes.sha512 }}</td></tr>
+                </table>
+            </div>
+
+            <!-- EXIF Camera & GPS Info -->
+            <div class="card">
+                <div class="card-header">📷 EXIF Camera & Geolocation</div>
+                <table class="info-table">
+                    <tr><td>Kamera Make/Model</td><td>{{ forensics_data.exif_metadata.camera_make or '-' }} {{ forensics_data.exif_metadata.camera_model or '' }}</td></tr>
+                    <tr><td>Software Editor</td><td>{{ forensics_data.exif_metadata.software or '-' }}</td></tr>
+                    <tr><td>Waktu Pengambilan</td><td>{{ forensics_data.exif_metadata.datetime_original or '-' }}</td></tr>
+                    <tr>
+                        <td>GPS Koordinat</td>
+                        <td>
+                            {% if forensics_data.exif_metadata.gps_coordinates %}
+                            {{ forensics_data.exif_metadata.gps_coordinates.latitude }}, {{ forensics_data.exif_metadata.gps_coordinates.longitude }}<br>
+                            <a href="{{ forensics_data.exif_metadata.gps_coordinates.google_maps_url }}" target="_blank" style="color: var(--accent-cyan);">Buka Lokasi di Google Maps ↗</a>
+                            {% else %}
+                            <span style="color: var(--text-muted);">Tidak ada tag GPS di foto</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Hidden / Extracted Strings -->
+        {% if forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}
+        <div class="card" style="margin-bottom: 25px;">
+            <div class="card-header">📜 Extracted Interesting Printable Strings (Sample)</div>
+            <pre>{% for s in forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}{{ s }}
+{% endfor %}</pre>
+        </div>
+        {% endif %}
+
+        <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px;">
+            PATRICT-OSINT v2.0 Media Forensics Engine &bull; Generated Automatically
+        </div>
+    </div>
+</body>
+</html>
