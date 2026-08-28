@@ -366,12 +366,14 @@ class ReportGenerator:
         f_meta = f_info.get("file_info", {})
         hashes = f_info.get("cryptographic_hashes", {})
         entropy = f_info.get("shannon_entropy", {})
+        sliding_ent = f_info.get("sliding_window_entropy", {})
         magic = f_info.get("magic_bytes_inspection", {})
+        png_data = f_info.get("png_chunk_forensics", {})
+        lsb_multi = f_info.get("lsb_steganography_multi_channel", {})
+        in_file_carved = f_info.get("in_file_carved_segments", [])
         exif = f_info.get("exif_metadata", {})
         pdf = f_info.get("pdf_forensics", {})
         office = f_info.get("office_forensics", {})
-        lsb = f_info.get("lsb_steganography", {})
-        carving = f_info.get("binary_carving_and_payload", {})
 
         md = f"""# Digital Media & File Forensics Report
 
@@ -386,81 +388,77 @@ class ReportGenerator:
 - **MD5:** `{hashes.get('md5')}`
 - **SHA-1:** `{hashes.get('sha1')}`
 - **SHA-256:** `{hashes.get('sha256')}`
-- **Shannon Entropy:** `{entropy.get('entropy')} bits/byte [{entropy.get('rating')}]` ({entropy.get('description')})
-- **Detected File Type:** `{magic.get('detected_file_type')}` (Spoofed: `{'YES [!]' if magic.get('is_extension_spoofed') else 'NO [OK]'}`)
-
----
+- **Global Shannon Entropy:** `{entropy.get('entropy')} bits/byte [{entropy.get('rating')}]` ({entropy.get('description')})
 """
+        if sliding_ent:
+            md += f"- **Sliding Window Entropy:** Min: `{sliding_ent.get('min_entropy')}` | Max: `{sliding_ent.get('max_entropy')}` | Avg: `{sliding_ent.get('avg_entropy')}` (High-Entropy Blocks: `{sliding_ent.get('high_entropy_blocks_count')}`)\n"
+
+        md += f"- **Detected File Type:** `{magic.get('detected_file_type')}` (Spoofed: `{'YES [!]' if magic.get('is_extension_spoofed') else 'NO [OK]'}`)\n\n---\n"
+
+        if png_data.get("is_png"):
+            md += f"""## 2. PNG Chunk Walker & Anomaly Inspector
+- **Total Chunks Found:** `{png_data.get('total_chunks_found')}`
+- **CRC-32 Integrity:** `{'TAMPERED [!]' if png_data.get('tampered_crc_detected') else 'Valid [OK]'}`
+"""
+            if png_data.get("custom_chunks"):
+                md += "- **Custom / Private Chunks:**\n"
+                for cc in png_data.get("custom_chunks"):
+                    md += f"  * `[{cc.get('chunk_type')}]` (Offset: `{cc.get('offset')}`, Size: `{cc.get('length')} B`): `{cc.get('printable_preview')}`\n"
+            if png_data.get("anomalies"):
+                md += "- **Anomalies Detected:**\n"
+                for an in png_data.get("anomalies"):
+                    md += f"  * `{an}`\n"
+            md += "\n---\n"
+
+        if lsb_multi.get("lsb_extracted"):
+            md += f"""## 3. Multi-Channel LSB Steganography Engine
+- **Channels Analyzed:** `{', '.join(lsb_multi.get('channels_analyzed', []))}`
+- **Flag / Key Sniffer Findings:**
+"""
+            if lsb_multi.get("flag_patterns_found"):
+                for fp in lsb_multi.get("flag_patterns_found"):
+                    md += f"  * `{fp}`\n"
+            else:
+                md += "  * `Clean (No plaintext flag patterns found)`\n"
+
+            if lsb_multi.get("extracted_urls"):
+                md += f"- **Extracted URLs:** `{', '.join(lsb_multi.get('extracted_urls'))}`\n"
+            md += "\n---\n"
+
+        if in_file_carved:
+            md += "## 4. In-File Deep Carving & Embedded Payloads\n\n"
+            md += "| # | Detected Type | Offset | Size | MD5 Hash | Carved File Path |\n|---|---|---|---|---|---|\n"
+            for idx, cs in enumerate(in_file_carved, 1):
+                md += f"| {idx} | **{cs.get('detected_type')}** | `{cs.get('offset')}` | `{cs.get('size_formatted')}` | `{cs.get('md5')}` | `{cs.get('carved_file_path')}` |\n"
+            md += "\n---\n"
+
         if exif.get("has_exif"):
-            md += f"""## 2. EXIF Camera, Optics & Metadata
+            md += f"""## 5. EXIF Camera, Optics & Metadata
 - **Device / Model:** `{exif.get('camera_make', '')} {exif.get('camera_model', '')}`
 - **Lens Model:** `{exif.get('lens_model') or 'N/A'}`
 - **Author / Artist:** `{exif.get('artist') or 'N/A'}` (© `{exif.get('copyright') or 'N/A'}`)
-- **User Comment:** `{exif.get('user_comment') or 'N/A'}`
 - **Original Date/Time:** `{exif.get('datetime_original', 'N/A')}`
-- **Software / Editor:** `{exif.get('software', 'N/A')}`
-- **Exposure:** `{exif.get('exposure_time') or 'N/A'} | {exif.get('f_number') or 'N/A'} | ISO {exif.get('iso_speed') or 'N/A'} | {exif.get('focal_length') or 'N/A'}`
-- **Flash:** `{exif.get('flash') or 'N/A'}`
 """
             gps = exif.get("gps_coordinates")
             if gps:
-                md += f"""
-### Geolocation & GPS Data
-- **Decimal Coordinates:** `Latitude: {gps.get('latitude')}, Longitude: {gps.get('longitude')}`
-- **DMS Coordinates:** `{gps.get('dms_formatted') or 'N/A'}`
-- **Altitude:** `{gps.get('altitude') or 'N/A'}`
-- **Google Maps:** [{gps.get('google_maps_url')}]({gps.get('google_maps_url')})
-- **OpenStreetMap:** [{gps.get('openstreetmap_url')}]({gps.get('openstreetmap_url')})
-"""
+                md += f"- **GPS Coordinates:** `{gps.get('latitude')}, {gps.get('longitude')}` ([Google Maps]({gps.get('google_maps_url')}))\n"
+            md += "\n---\n"
 
         if pdf.get("is_pdf"):
-            md += f"""
----
-
-## 3. PDF Document Forensics & Security Audit
+            md += f"""## 6. PDF Document Forensics & Security Audit
 - **Format Version:** `{pdf.get('pdf_version')}`
-- **Title:** `{pdf.get('title') or 'N/A'}`
-- **Author / Creator:** `{pdf.get('author') or 'N/A'} / {pdf.get('creator') or 'N/A'}` (Producer: `{pdf.get('producer') or 'N/A'}`)
-- **Creation Date:** `{pdf.get('creation_date') or 'N/A'}`
-- **Page Count:** `{pdf.get('page_count')} Pages`
-- **Encrypted:** `{'YES [Password Protected]' if pdf.get('is_encrypted') else 'NO'}`
-- **Security Flags:** `{', '.join(pdf.get('suspicious_actions')) if pdf.get('suspicious_actions') else 'Clean [OK]'}`
-"""
+- **Title / Author:** `{pdf.get('title') or 'N/A'} / {pdf.get('author') or 'N/A'}`
+- **Total Pages:** `{pdf.get('page_count')} Pages`
+- **Security Triggers:** `{', '.join(pdf.get('suspicious_actions')) if pdf.get('suspicious_actions') else 'Clean [OK]'}`
+\n---\n"""
 
         if office.get("is_office_doc"):
-            md += f"""
----
-
-## 4. Microsoft Office Document Forensics
+            md += f"""## 7. Microsoft Office Document Forensics
 - **Document Type:** `{office.get('doc_type')}`
-- **Author / Creator:** `{office.get('creator') or 'N/A'}`
-- **Last Modified By:** `{office.get('last_modified_by') or 'N/A'}` (Revision: `{office.get('revision') or '1'}`)
-- **Created / Modified:** `{office.get('created') or 'N/A'} / {office.get('modified') or 'N/A'}`
-- **Application:** `{office.get('application') or 'Office'} (v{office.get('app_version') or 'N/A'})`
-- **Total Editing Time:** `{office.get('total_editing_time_minutes') or 'N/A'}`
+- **Author / Last Modified By:** `{office.get('creator') or 'N/A'} / {office.get('last_modified_by') or 'N/A'}`
+- **Hidden Worksheets:** `{', '.join(office.get('hidden_worksheets')) if office.get('hidden_worksheets') else 'None'}`
 - **VBA Macros:** `{'YES [MALWARE WARNING]' if office.get('has_vba_macros') else 'Clean [OK]'}`
-"""
-
-        md += f"""
----
-
-## 5. LSB Steganography Probing
-- **Suspicious LSB Stego Detected:** `{'YES [!]' if lsb.get('suspicious_stego_detected') else 'Clean [OK]'}`
-- **Printable ASCII Ratio:** `{lsb.get('printable_ascii_ratio', 0.0) * 100:.1f}%`
-- **Detected Signatures:** `{', '.join(lsb.get('detected_signatures')) if lsb.get('detected_signatures') else 'None'}`
-- **Recovered LSB Snippet:** `{lsb.get('recovered_preview') or 'None'}`
-
----
-
-## 6. Deep Binary Carving & Trailing Payload
-- **Trailing Data Present:** `{'YES [PAYLOAD DETECTED]' if carving.get('has_trailing_payload') else 'Clean [OK]'}`
-- **Trailing Size:** `{carving.get('trailing_size_formatted')}` ({carving.get('trailing_size_bytes')} bytes)
-- **Detected Payload Type:** `{carving.get('detected_payload_type')}`
-- **Trailing Shannon Entropy:** `{carving.get('trailing_entropy')} bits/byte ({carving.get('trailing_entropy_rating')})`
-- **Carved File Location:** `{carving.get('carved_file_path') or 'N/A'}`
-- **Carved MD5 Hash:** `{carving.get('carved_file_md5') or 'N/A'}`
-- **Extracted Strings Sample:** `{', '.join(carving.get('interesting_strings', [])) or 'None'}`
-"""
+\n---\n"""
         try:
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(md)

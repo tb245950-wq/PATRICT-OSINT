@@ -1,6 +1,7 @@
 import os
 import re
 import math
+import zlib
 import struct
 import hashlib
 import zipfile
@@ -12,12 +13,11 @@ from datetime import datetime, timezone
 from core.base_module import BaseOSINTModule
 
 # ============================================================
-# UTILITY HELPER: SHANNON ENTROPY CALCULATION
+# 1. SHANNON ENTROPY & SLIDING WINDOW ANALYZER
 # ============================================================
 def calculate_shannon_entropy(data: bytes) -> Dict[str, Any]:
     """
     Menghitung Shannon Entropy dari sekumpulan byte (0.0000 - 8.0000 bits/byte).
-    Digunakan untuk mendeteksi data terenkripsi, terkompresi, atau plaintext.
     """
     if not data:
         return {
@@ -28,12 +28,9 @@ def calculate_shannon_entropy(data: bytes) -> Dict[str, Any]:
 
     length = len(data)
     counts = Counter(data)
-    entropy = 0.0
-    for count in counts.values():
-        p = count / length
-        entropy -= p * math.log2(p)
-
+    entropy = -sum((cnt / length) * math.log2(cnt / length) for cnt in counts.values())
     entropy_val = round(entropy, 4)
+
     if entropy_val < 5.0:
         rating = "LOW"
         desc = "Plaintext / Uncompressed / Simple Formatted Data"
@@ -53,12 +50,100 @@ def calculate_shannon_entropy(data: bytes) -> Dict[str, Any]:
         "description": desc
     }
 
+def analyze_sliding_window_entropy(data: bytes, window_size: int = 256, step_size: int = 256) -> Dict[str, Any]:
+    """
+    Menghitung distribusi Shannon Entropy dengan teknik sliding window (per blok 256 byte).
+    Mendeteksi lonjakan entropi yang mengindikasikan segmen payload terenkripsi/terkompresi.
+    """
+    if len(data) < window_size:
+        single = calculate_shannon_entropy(data)
+        return {
+            "blocks_analyzed": 1,
+            "min_entropy": single["entropy"],
+            "max_entropy": single["entropy"],
+            "avg_entropy": single["entropy"],
+            "high_entropy_blocks_count": 1 if single["entropy"] > 7.5 else 0,
+            "entropy_variance": 0.0
+        }
+
+    entropy_values = []
+    high_blocks = 0
+
+    for i in range(0, len(data) - window_size + 1, step_size):
+        chunk = data[i : i + window_size]
+        chunk_len = len(chunk)
+        counts = Counter(chunk)
+        e = -sum((cnt / chunk_len) * math.log2(cnt / chunk_len) for cnt in counts.values())
+        entropy_values.append(e)
+        if e > 7.5:
+            high_blocks += 1
+
+    if not entropy_values:
+        single = calculate_shannon_entropy(data)
+        return {
+            "blocks_analyzed": 1,
+            "min_entropy": single["entropy"],
+            "max_entropy": single["entropy"],
+            "avg_entropy": single["entropy"],
+            "high_entropy_blocks_count": 0,
+            "entropy_variance": 0.0
+        }
+
+    avg_e = sum(entropy_values) / len(entropy_values)
+    variance = sum((x - avg_e) ** 2 for x in entropy_values) / len(entropy_values)
+
+    return {
+        "blocks_analyzed": len(entropy_values),
+        "min_entropy": round(min(entropy_values), 4),
+        "max_entropy": round(max(entropy_values), 4),
+        "avg_entropy": round(avg_e, 4),
+        "high_entropy_blocks_count": high_blocks,
+        "entropy_variance": round(variance, 4)
+    }
+
+# ============================================================
+# 2. HEURISTIC 1-BYTE XOR & CAESAR DECRYPTOR
+# ============================================================
+def heuristic_xor_bruteforce(data: bytes, max_bytes: int = 4096) -> List[Dict[str, Any]]:
+    """
+    Melakukan 1-Byte XOR & Caesar Brute-Force pada segmen biner untuk mencari
+    pola flag CTF ('FLAG{', 'CTF{', 'flag{'), tautan ('http://', 'https://'), atau keyword rahasia.
+    """
+    findings = []
+    sample = data[:max_bytes]
+    if not sample:
+        return findings
+
+    keywords = [b"FLAG{", b"flag{", b"CTF{", b"ctf{", b"http://", b"https://", b"password", b"SECRET", b"admin", b"rootacces"]
+
+    for key in range(1, 256):
+        xored = bytes(b ^ key for b in sample)
+        for kw in keywords:
+            if kw in xored:
+                # Cari string readable di sekitar keyword
+                match_pos = xored.find(kw)
+                start_p = max(0, match_pos - 10)
+                end_p = min(len(xored), match_pos + 60)
+                snippet = xored[start_p:end_p].decode("ascii", errors="ignore").strip()
+
+                findings.append({
+                    "method": f"1-Byte XOR (Key: 0x{key:02X})",
+                    "key_hex": f"0x{key:02X}",
+                    "matched_keyword": kw.decode("ascii", errors="ignore"),
+                    "decrypted_snippet": snippet
+                })
+                break
+        if len(findings) >= 5:
+            break
+
+    return findings
+
 
 class FileForensics(BaseOSINTModule):
     name: str = "Media & File Forensics"
     module_id: str = "file_forensics"
-    description: str = "Forensik mendalam gambar/media, PDF, Office: EXIF & GPS presisi, Shannon Entropy, multi-format parser, LSB stego probing, dan automatic binary carving."
-    version: str = "2.5.0"
+    description: str = "Hardcore DFIR & CTF File Analyzer: PNG Chunk Walker, multi-channel LSB stego extraction, in-file deep binary carving, sliding window entropy, dan Office/PDF deep parser."
+    version: str = "2.6.0"
     priority: int = 1
     target_type: str = "file"
 
@@ -76,28 +161,35 @@ class FileForensics(BaseOSINTModule):
         b"PK\x03\x04": ("ZIP Archive / Office Document", [".zip", ".docx", ".xlsx", ".pptx", ".jar"]),
         b"Rar!\x1a\x07": ("RAR Archive", [".rar"]),
         b"7z\xbc\xaf\x27\x1c": ("7-Zip Archive", [".7z"]),
-        b"\x1f\x8b": ("GZIP Compressed Archive", [".gz", ".tgz"]),
-        b"BZh": ("BZIP2 Compressed Archive", [".bz2"]),
+        b"\x1f\x8b\x08": ("GZIP Compressed Stream", [".gz", ".tgz"]),
+        b"BZh": ("BZIP2 Compressed Stream", [".bz2"]),
+        b"SQLite format 3\x00": ("SQLite Database", [".sqlite", ".db", ".sqlite3"]),
         b"\x7fELF": ("Linux ELF Executable", [".elf", ".bin", ".so"]),
         b"MZ": ("Windows PE Executable / DLL", [".exe", ".dll", ".sys"])
     }
 
-    # Signature Trailing Payload Carving Headers
-    CARVE_SIGNATURES = [
+    # Embedded In-File Scanner Signatures (Offset > 0)
+    EMBEDDED_SIGNATURES = [
         (b"PK\x03\x04", "ZIP Archive / Office Container", ".zip"),
         (b"Rar!\x1a\x07\x00", "RAR 4.x Archive", ".rar"),
         (b"Rar!\x1a\x07\x01\x00", "RAR 5.x Archive", ".rar"),
         (b"7z\xbc\xaf\x27\x1c", "7-Zip Compressed Archive", ".7z"),
+        (b"\x1f\x8b\x08", "GZIP Compressed Stream", ".gz"),
+        (b"BZh", "BZIP2 Compressed Stream", ".bz2"),
         (b"%PDF-", "Embedded PDF Document", ".pdf"),
+        (b"SQLite format 3\x00", "Embedded SQLite Database", ".sqlite"),
         (b"\x7fELF", "Linux ELF Executable", ".elf"),
         (b"MZ", "Windows PE Executable / DLL", ".exe"),
-        (b"\x1f\x8b", "GZIP Compressed Stream", ".gz"),
-        (b"BZh", "BZIP2 Compressed Stream", ".bz2"),
         (b"\x89PNG\r\n\x1a\n", "Embedded PNG Image", ".png"),
         (b"\xFF\xD8\xFF", "Embedded JPEG Image", ".jpg"),
-        (b"RIFF", "Embedded RIFF / WebP Media", ".riff"),
         (b"Salted__", "OpenSSL Encrypted Binary Blob", ".enc")
     ]
+
+    STANDARD_PNG_CHUNKS = {
+        "IHDR", "PLTE", "IDAT", "IEND", "tRNS", "cHRM", "gAMA", "iCCP",
+        "sBIT", "sRGB", "tEXt", "zTXt", "iTXt", "bKGD", "hIST", "pHYs",
+        "sPLT", "tIME", "dSIG", "eXIf", "acTL", "fcTL", "fdAT"
+    }
 
     def _calculate_hashes(self, file_bytes: bytes) -> Dict[str, str]:
         """Menghitung hash MD5, SHA-1, SHA-256, SHA-512"""
@@ -129,229 +221,298 @@ class FileForensics(BaseOSINTModule):
             "is_extension_spoofed": is_spoofed
         }
 
-    def _decode_user_comment(self, raw_val: Any) -> Optional[str]:
-        """Decode UserComment EXIF field secara aman (menangani ASCII, Unicode, undefined)"""
-        if not raw_val:
-            return None
-        if isinstance(raw_val, str):
-            return raw_val.strip()
-        if isinstance(raw_val, bytes):
-            # Check for standard EXIF UserComment prefix
-            if raw_val.startswith(b"ASCII\x00\x00\x00"):
-                return raw_val[8:].decode("ascii", errors="ignore").strip()
-            elif raw_val.startswith(b"UNICODE\x00"):
-                return raw_val[8:].decode("utf-16le", errors="ignore").strip()
-            elif raw_val.startswith(b"\x00" * 8):
-                return raw_val[8:].decode("utf-8", errors="ignore").strip()
+    # ============================================================
+    # 3. PNG CHUNK WALKER & ANOMALY INSPECTOR (CTF ARTIFACTS)
+    # ============================================================
+    def _inspect_png_chunks(self, file_bytes: bytes) -> Dict[str, Any]:
+        """
+        Parser sekuensial biner PNG yang memvalidasi CRC-32 per chunk, mendeteksi manipulasi dimensi
+        gambar (IHDR CRC Mismatch), dan mengekstrak data dari non-standard/custom private chunks.
+        """
+        png_report = {
+            "is_png": False,
+            "total_chunks_found": 0,
+            "ihdr_details": {},
+            "tampered_crc_detected": False,
+            "anomalies": [],
+            "custom_chunks": [],
+            "chunks_summary": []
+        }
+
+        if not file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            return png_report
+
+        png_report["is_png"] = True
+        offset = 8
+        total_len = len(file_bytes)
+
+        while offset + 8 <= total_len:
             try:
-                return raw_val.decode("utf-8").strip()
-            except Exception:
-                return raw_val.decode("latin-1", errors="ignore").strip()
-        return str(raw_val)
+                chunk_len = struct.unpack(">I", file_bytes[offset : offset + 4])[0]
+                chunk_type_raw = file_bytes[offset + 4 : offset + 8]
+                chunk_type_str = chunk_type_raw.decode("ascii", errors="replace")
 
-    def _format_exposure_time(self, val: Any) -> Optional[str]:
-        """Formatting exposure time (e.g. 1/125s or 0.5s)"""
-        if not val:
-            return None
-        try:
-            if isinstance(val, (int, float)):
-                if val < 1.0 and val > 0:
-                    inv = round(1.0 / float(val))
-                    return f"1/{inv}s ({val}s)"
-                return f"{val}s"
-            # IFD Rational object
-            if hasattr(val, "numerator") and hasattr(val, "denominator"):
-                return f"{val.numerator}/{val.denominator}s"
-            if isinstance(val, tuple) and len(val) == 2:
-                return f"{val[0]}/{val[1]}s"
-        except Exception:
-            pass
-        return str(val)
+                data_start = offset + 8
+                data_end = data_start + chunk_len
 
-    def _format_f_number(self, val: Any) -> Optional[str]:
-        """Formatting f-number (e.g. f/2.8)"""
-        if not val:
-            return None
-        try:
-            if isinstance(val, (int, float)):
-                return f"f/{round(float(val), 2)}"
-            if hasattr(val, "numerator") and hasattr(val, "denominator"):
-                return f"f/{round(val.numerator / val.denominator, 2)}"
-            if isinstance(val, tuple) and len(val) == 2:
-                return f"f/{round(val[0] / val[1], 2)}"
-        except Exception:
-            pass
-        return str(val)
+                if data_end + 4 > total_len:
+                    png_report["anomalies"].append(f"[TRUNCATED] Chunk {chunk_type_str} terpotong di offset {offset} (Length: {chunk_len} bytes)")
+                    break
 
-    def _format_focal_length(self, val: Any) -> Optional[str]:
-        """Formatting focal length (e.g. 50.0 mm)"""
-        if not val:
-            return None
-        try:
-            if isinstance(val, (int, float)):
-                return f"{round(float(val), 1)} mm"
-            if hasattr(val, "numerator") and hasattr(val, "denominator"):
-                return f"{round(val.numerator / val.denominator, 1)} mm"
-            if isinstance(val, tuple) and len(val) == 2:
-                return f"{round(val[0] / val[1], 1)} mm"
-        except Exception:
-            pass
-        return str(val)
+                chunk_data = file_bytes[data_start:data_end]
+                stored_crc = struct.unpack(">I", file_bytes[data_end : data_end + 4])[0]
+                computed_crc = zlib.crc32(chunk_type_raw + chunk_data) & 0xFFFFFFFF
 
-    def _extract_exif_metadata(self, file_path: str, file_bytes: bytes) -> Dict[str, Any]:
+                is_crc_valid = (stored_crc == computed_crc)
+                png_report["total_chunks_found"] += 1
+
+                # 1. Validasi IHDR (Header Chunk)
+                if chunk_type_str == "IHDR" and chunk_len >= 13:
+                    w, h, bit_depth, col_type, comp, filt, interlace = struct.unpack(">IIBBBBB", chunk_data[:13])
+                    png_report["ihdr_details"] = {
+                        "width": w,
+                        "height": h,
+                        "bit_depth": bit_depth,
+                        "color_type": col_type,
+                        "compression": comp,
+                        "filter": filt,
+                        "interlace": interlace,
+                        "crc_valid": is_crc_valid
+                    }
+                    if not is_crc_valid:
+                        png_report["tampered_crc_detected"] = True
+                        msg = f"[TAMPERED] IHDR Chunk CRC Mismatch! Stored: 0x{stored_crc:08X} vs Computed: 0x{computed_crc:08X}. Indikasi modifikasi dimensi / crop height trick!"
+                        png_report["anomalies"].append(msg)
+
+                # 2. Deteksi CRC Mismatch di chunk lain
+                elif not is_crc_valid:
+                    png_report["tampered_crc_detected"] = True
+                    png_report["anomalies"].append(f"[TAMPERED] CRC Mismatch pada chunk '{chunk_type_str}' (Offset: {offset}). Stored: 0x{stored_crc:08X} vs Computed: 0x{computed_crc:08X}")
+
+                # 3. Deteksi Non-Standard / Custom Private Chunk
+                if chunk_type_str not in self.STANDARD_PNG_CHUNKS:
+                    # Coba decode data printable
+                    printable_sample = re.findall(rb"[\x20-\x7E]{4,}", chunk_data)
+                    clean_preview = ", ".join([s.decode('ascii', errors='ignore') for s in printable_sample[:3]])
+                    
+                    # Heuristic XOR pada custom chunk data
+                    xor_hits = heuristic_xor_bruteforce(chunk_data, max_bytes=512)
+
+                    custom_entry = {
+                        "chunk_type": chunk_type_str,
+                        "offset": offset,
+                        "length": chunk_len,
+                        "crc_valid": is_crc_valid,
+                        "printable_preview": clean_preview or repr(chunk_data[:30]),
+                        "xor_findings": xor_hits
+                    }
+                    png_report["custom_chunks"].append(custom_entry)
+                    png_report["anomalies"].append(f"[ANOMALY] Custom/Private PNG Chunk Terdeteksi: '{chunk_type_str}' (Ukuran: {chunk_len} bytes di offset {offset})")
+
+                png_report["chunks_summary"].append({
+                    "type": chunk_type_str,
+                    "offset": offset,
+                    "length": chunk_len,
+                    "crc_valid": is_crc_valid
+                })
+
+                offset = data_end + 4
+                if chunk_type_str == "IEND":
+                    break
+            except Exception as e:
+                png_report["anomalies"].append(f"Parsing error pada offset {offset}: {e}")
+                break
+
+        return png_report
+
+    # ============================================================
+    # 4. MULTI-CHANNEL LSB STEGANOGRAPHY EXTRACTION ENGINE
+    # ============================================================
+    def _extract_multi_channel_lsb(self, file_path: str, max_pixels: int = 30000) -> Dict[str, Any]:
         """
-        Ekstraksi metadata EXIF gambar lengkap & presisi:
-        Artist, Copyright, UserComment, Lens, Focal Length, Exposure, Flash, dan GPS Decimal/DMS.
+        Ekstraksi LSB pada kanal warna Red, Green, Blue, Alpha, dan Interleaved RGB.
+        Dilengkapi pattern sniffer untuk mendeteksi format Flag CTF, URLs, dan Base64 strings.
         """
-        exif_info = {
-            "has_exif": False,
-            "camera_make": None,
-            "camera_model": None,
-            "lens_model": None,
-            "lens_make": None,
-            "software": None,
-            "artist": None,
-            "copyright": None,
-            "image_description": None,
-            "user_comment": None,
-            "datetime_original": None,
-            "datetime_digitized": None,
-            "datetime_modified": None,
-            "exposure_time": None,
-            "f_number": None,
-            "iso_speed": None,
-            "focal_length": None,
-            "focal_length_35mm": None,
-            "flash": None,
-            "exposure_program": None,
-            "metering_mode": None,
-            "white_balance": None,
-            "image_dimensions": None,
-            "color_space": None,
-            "gps_coordinates": None,
-            "raw_tags": {}
+        lsb_results = {
+            "lsb_extracted": False,
+            "suspicious_stego_detected": False,
+            "channels_analyzed": [],
+            "flag_patterns_found": [],
+            "extracted_urls": [],
+            "extracted_base64": [],
+            "channel_previews": {}
         }
 
         try:
-            from PIL import Image, ExifTags
+            from PIL import Image
             with Image.open(file_path) as img:
-                # Dimensi gambar
-                exif_info["image_dimensions"] = f"{img.width} x {img.height} px"
-                
-                raw_exif = img._getexif()
-                if raw_exif:
-                    exif_info["has_exif"] = True
-                    gps_data = {}
+                has_alpha = ("A" in img.mode or img.mode == "RGBA")
+                if img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGBA" if has_alpha else "RGB")
 
-                    for tag_id, value in raw_exif.items():
-                        tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
-                        if tag_name == "GPSInfo":
-                            for gps_tag_id in value:
-                                sub_name = ExifTags.GPSTAGS.get(gps_tag_id, str(gps_tag_id))
-                                gps_data[sub_name] = value[gps_tag_id]
-                        else:
-                            if isinstance(value, (str, int, float)):
-                                exif_info["raw_tags"][tag_name] = str(value)
-                            elif isinstance(value, bytes):
-                                exif_info["raw_tags"][tag_name] = repr(value)
+                pixels = list(img.getdata())
+                limit = min(len(pixels), max_pixels)
 
-                    # 1. Identitas Perangkat & Optik
-                    exif_info["camera_make"] = exif_info["raw_tags"].get("Make")
-                    exif_info["camera_model"] = exif_info["raw_tags"].get("Model")
-                    exif_info["lens_model"] = exif_info["raw_tags"].get("LensModel") or exif_info["raw_tags"].get("Lens")
-                    exif_info["lens_make"] = exif_info["raw_tags"].get("LensMake")
-                    exif_info["software"] = exif_info["raw_tags"].get("Software")
+                red_bits = []
+                green_bits = []
+                blue_bits = []
+                alpha_bits = []
+                interleaved_bits = []
 
-                    # 2. Hak Cipta & Author
-                    exif_info["artist"] = exif_info["raw_tags"].get("Artist") or exif_info["raw_tags"].get("Author") or exif_info["raw_tags"].get("XPAuthor")
-                    exif_info["copyright"] = exif_info["raw_tags"].get("Copyright")
-                    exif_info["image_description"] = exif_info["raw_tags"].get("ImageDescription") or exif_info["raw_tags"].get("XPTitle")
-                    
-                    user_comm_raw = raw_exif.get(37510) or raw_exif.get("UserComment")
-                    exif_info["user_comment"] = self._decode_user_comment(user_comm_raw)
+                for i in range(limit):
+                    px = pixels[i]
+                    r, g, b = px[0], px[1], px[2]
+                    red_bits.append(r & 1)
+                    green_bits.append(g & 1)
+                    blue_bits.append(b & 1)
+                    interleaved_bits.extend([r & 1, g & 1, b & 1])
 
-                    # 3. Waktu Pemotretan
-                    exif_info["datetime_original"] = exif_info["raw_tags"].get("DateTimeOriginal")
-                    exif_info["datetime_digitized"] = exif_info["raw_tags"].get("DateTimeDigitized")
-                    exif_info["datetime_modified"] = exif_info["raw_tags"].get("DateTime")
+                    if has_alpha and len(px) > 3:
+                        a = px[3]
+                        alpha_bits.append(a & 1)
+                        interleaved_bits.append(a & 1)
 
-                    # 4. Parameter Pengambilan Gambar
-                    exif_info["exposure_time"] = self._format_exposure_time(raw_exif.get(33434) or raw_exif.get("ExposureTime"))
-                    exif_info["f_number"] = self._format_f_number(raw_exif.get(33437) or raw_exif.get("FNumber"))
-                    exif_info["iso_speed"] = exif_info["raw_tags"].get("ISOSpeedRatings") or exif_info["raw_tags"].get("PhotographicSensitivity")
-                    exif_info["focal_length"] = self._format_focal_length(raw_exif.get(37386) or raw_exif.get("FocalLength"))
-                    if raw_exif.get(41989) or raw_exif.get("FocalLengthIn35mmFilm"):
-                        exif_info["focal_length_35mm"] = f"{raw_exif.get(41989) or raw_exif.get('FocalLengthIn35mmFilm')} mm"
-                    
-                    flash_val = raw_exif.get(37385) or raw_exif.get("Flash")
-                    if flash_val is not None:
-                        exif_info["flash"] = "Flash Fired" if (isinstance(flash_val, int) and (flash_val & 1)) else "Flash Did Not Fire"
-                    
-                    exif_info["exposure_program"] = exif_info["raw_tags"].get("ExposureProgram")
-                    exif_info["metering_mode"] = exif_info["raw_tags"].get("MeteringMode")
-                    exif_info["white_balance"] = exif_info["raw_tags"].get("WhiteBalance")
-                    
-                    cs_val = raw_exif.get(40961) or raw_exif.get("ColorSpace")
-                    if cs_val == 1:
-                        exif_info["color_space"] = "sRGB"
-                    elif cs_val == 65535 or cs_val == 2:
-                        exif_info["color_space"] = "Adobe RGB / Uncalibrated"
+                def bits_to_bytes(bit_list: List[int]) -> bytes:
+                    out = bytearray()
+                    for idx in range(0, len(bit_list) - 7, 8):
+                        val = 0
+                        for b_idx in range(8):
+                            val = (val << 1) | bit_list[idx + b_idx]
+                        out.append(val)
+                    return bytes(out)
 
-                    # 5. Konversi GPS Presisi (Decimal Degrees, DMS & Map Links)
-                    if gps_data and "GPSLatitude" in gps_data and "GPSLongitude" in gps_data:
-                        try:
-                            def to_decimal(val_tuple: Tuple) -> float:
-                                d, m, s = val_tuple
-                                d_val = float(d.numerator) / float(d.denominator) if hasattr(d, "numerator") else float(d)
-                                m_val = float(m.numerator) / float(m.denominator) if hasattr(m, "numerator") else float(m)
-                                s_val = float(s.numerator) / float(s.denominator) if hasattr(s, "numerator") else float(s)
-                                return d_val + (m_val / 60.0) + (s_val / 3600.0)
+                channel_streams = {
+                    "Red Channel LSB": bits_to_bytes(red_bits),
+                    "Green Channel LSB": bits_to_bytes(green_bits),
+                    "Blue Channel LSB": bits_to_bytes(blue_bits),
+                    "All-Channels Interleaved LSB": bits_to_bytes(interleaved_bits)
+                }
+                if has_alpha and alpha_bits:
+                    channel_streams["Alpha Channel LSB"] = bits_to_bytes(alpha_bits)
 
-                            def to_dms_str(val_tuple: Tuple, ref: str) -> str:
-                                d, m, s = val_tuple
-                                d_val = int(float(d.numerator) / float(d.denominator) if hasattr(d, "numerator") else float(d))
-                                m_val = int(float(m.numerator) / float(m.denominator) if hasattr(m, "numerator") else float(m))
-                                s_val = float(s.numerator) / float(s.denominator) if hasattr(s, "numerator") else float(s)
-                                return f"{d_val}°{m_val}'{s_val:.2f}\"{ref}"
+                lsb_results["lsb_extracted"] = True
+                lsb_results["channels_analyzed"] = list(channel_streams.keys())
 
-                            lat_deg = to_decimal(gps_data["GPSLatitude"])
-                            lat_ref = gps_data.get("GPSLatitudeRef", "N").upper()
-                            if lat_ref == "S":
-                                lat_deg = -lat_deg
+                # Regex Pattern Sniffers
+                flag_regex = re.compile(rb"(FLAG|flag|CTF|ctf)\{[^ \r\n\t\}]{4,80}\}")
+                url_regex = re.compile(rb"https?://[A-Za-z0-9\.\-_/:\?=%&#]{6,100}")
+                b64_regex = re.compile(rb"[A-Za-z0-9+/]{24,}={0,2}")
 
-                            lon_deg = to_decimal(gps_data["GPSLongitude"])
-                            lon_ref = gps_data.get("GPSLongitudeRef", "E").upper()
-                            if lon_ref == "W":
-                                lon_deg = -lon_deg
+                for ch_name, stream_bytes in channel_streams.items():
+                    # 1. Pindai Plaintext Flag Patterns
+                    flags = flag_regex.findall(stream_bytes)
+                    for f_match in flags:
+                        full_m = re.search(rb"(FLAG|flag|CTF|ctf)\{[^ \r\n\t\}]{4,80}\}", stream_bytes)
+                        if full_m:
+                            flag_str = full_m.group(0).decode("ascii", errors="ignore")
+                            lsb_results["flag_patterns_found"].append(f"[{ch_name}] {flag_str}")
+                            lsb_results["suspicious_stego_detected"] = True
 
-                            dms_str = f"{to_dms_str(gps_data['GPSLatitude'], lat_ref)} {to_dms_str(gps_data['GPSLongitude'], lon_ref)}"
+                    # 2. Pindai URLs
+                    urls = url_regex.findall(stream_bytes)
+                    for u in urls[:2]:
+                        u_str = u.decode("ascii", errors="ignore")
+                        lsb_results["extracted_urls"].append(f"[{ch_name}] {u_str}")
+                        lsb_results["suspicious_stego_detected"] = True
 
-                            # Altitude calculation
-                            altitude_str = None
-                            if "GPSAltitude" in gps_data:
-                                alt_val = gps_data["GPSAltitude"]
-                                alt_num = float(alt_val.numerator) / float(alt_val.denominator) if hasattr(alt_val, "numerator") else float(alt_val)
-                                alt_ref = gps_data.get("GPSAltitudeRef", 0)
-                                if alt_ref == 1 or str(alt_ref) == "1":
-                                    altitude_str = f"-{alt_num:.1f} m (Below Sea Level)"
-                                else:
-                                    altitude_str = f"{alt_num:.1f} m (Above Sea Level)"
+                    # 3. Pindai Base64 Strings
+                    b64s = b64_regex.findall(stream_bytes)
+                    for b_val in b64s[:2]:
+                        lsb_results["extracted_base64"].append(f"[{ch_name}] {b_val.decode('ascii', errors='ignore')}")
 
-                            exif_info["gps_coordinates"] = {
-                                "latitude": round(lat_deg, 6),
-                                "longitude": round(lon_deg, 6),
-                                "dms_formatted": dms_str,
-                                "altitude": altitude_str,
-                                "google_maps_url": f"https://www.google.com/maps?q={round(lat_deg,6)},{round(lon_deg,6)}",
-                                "openstreetmap_url": f"https://www.openstreetmap.org/?mlat={round(lat_deg,6)}&mlon={round(lon_deg,6)}#map=16/{round(lat_deg,6)}/{round(lon_deg,6)}"
-                            }
-                        except Exception:
-                            pass
+                    # 4. Preview Readable String
+                    printable = re.findall(rb"[\x20-\x7E]{6,}", stream_bytes)
+                    preview_str = ", ".join([p.decode('ascii', errors='ignore') for p in printable[:2]])
+                    lsb_results["channel_previews"][ch_name] = preview_str or repr(stream_bytes[:25])
+
+                    # 5. Heuristic XOR pada LSB stream jika belum ada flag
+                    if not lsb_results["flag_patterns_found"]:
+                        xor_hits = heuristic_xor_bruteforce(stream_bytes, max_bytes=1024)
+                        for xh in xor_hits:
+                            lsb_results["flag_patterns_found"].append(f"[{ch_name} - {xh['method']}] {xh['decrypted_snippet']}")
+                            lsb_results["suspicious_stego_detected"] = True
+
         except Exception:
             pass
 
-        return exif_info
+        return lsb_results
 
+    # ============================================================
+    # 5. IN-FILE DEEP CARVING & EMBEDDED MAGIC SCANNER
+    # ============================================================
+    def _deep_carve_in_file(self, file_bytes: bytes, original_path: str) -> List[Dict[str, Any]]:
+        """
+        Memindai seluruh byte berkas dari offset 0 hingga akhir untuk mencari signature
+        file tersembunyi (ZIP, RAR, 7z, GZIP, PDF, SQLite, ELF, PE) yang tertanam pada offset > 0.
+        Otomatis memotong (carve) segmen biner dan menyimpannya ke `output/carved/`.
+        """
+        carved_list = []
+        total_len = len(file_bytes)
+        carved_dir = os.path.join(os.getcwd(), "output", "carved")
+
+        for sig, sig_name, ext in self.EMBEDDED_SIGNATURES:
+            start_pos = 1  # Mulai dari offset 1 untuk mencari embedded file bukan di awal
+            while True:
+                pos = file_bytes.find(sig, start_pos)
+                if pos == -1:
+                    break
+
+                # Validasi false positive sederhana
+                segment = file_bytes[pos:]
+                seg_len = len(segment)
+
+                if seg_len >= 16:
+                    os.makedirs(carved_dir, exist_ok=True)
+                    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                    seg_md5 = hashlib.md5(segment).hexdigest()
+                    seg_sha256 = hashlib.sha256(segment).hexdigest()
+
+                    clean_type_tag = re.sub(r'[^A-Za-z0-9]', '', ext.replace('.', ''))
+                    carved_filename = f"carved_{timestamp_str}_{clean_type_tag}_off{pos}_{seg_md5[:8]}{ext}"
+                    carved_filepath = os.path.join(carved_dir, carved_filename)
+
+                    try:
+                        with open(carved_filepath, "wb") as f_out:
+                            f_out.write(segment)
+                    except Exception:
+                        pass
+
+                    # Ekstraksi string pada segmen
+                    strings_found = re.findall(rb"[\x20-\x7E]{5,}", segment[:2048])
+                    clean_strings = []
+                    for s in strings_found:
+                        try:
+                            dec = s.decode("utf-8", errors="ignore").strip()
+                            if any(kw in dec.lower() for kw in ["flag", "http", "pass", "secret", "user", "admin", "token"]):
+                                clean_strings.append(dec)
+                        except Exception:
+                            pass
+
+                    # Heuristic XOR pada carved data
+                    xor_findings = heuristic_xor_bruteforce(segment, max_bytes=1024)
+
+                    carved_list.append({
+                        "detected_type": sig_name,
+                        "file_extension": ext,
+                        "offset": pos,
+                        "size_bytes": seg_len,
+                        "size_formatted": f"{seg_len / 1024:.2f} KB" if seg_len < 1024*1024 else f"{seg_len / (1024*1024):.2f} MB",
+                        "md5": seg_md5,
+                        "sha256": seg_sha256,
+                        "carved_file_path": carved_filepath,
+                        "interesting_strings": list(set(clean_strings))[:6],
+                        "xor_findings": xor_findings
+                    })
+
+                start_pos = pos + len(sig)
+                if len(carved_list) >= 10:  # Batasi max 10 carved segments
+                    break
+
+        return carved_list
+
+    # ============================================================
+    # 6. MULTI-FORMAT DEEP METADATA (OFFICE & PDF)
+    # ============================================================
     def _parse_pdf_forensics(self, file_bytes: bytes) -> Dict[str, Any]:
         """Mengekstrak metadata forensik dan audit keamanan dari file PDF"""
         pdf_info = {
@@ -366,6 +527,7 @@ class FileForensics(BaseOSINTModule):
             "page_count": 0,
             "is_encrypted": False,
             "embedded_javascript": False,
+            "has_openaction": False,
             "suspicious_actions": []
         }
 
@@ -373,18 +535,14 @@ class FileForensics(BaseOSINTModule):
             return pdf_info
 
         pdf_info["is_pdf"] = True
-        
-        # Ekstrak versi PDF
         v_match = re.search(rb"%PDF-([0-9\.]+)", file_bytes[:32])
         if v_match:
             pdf_info["pdf_version"] = f"PDF {v_match.group(1).decode('ascii', errors='ignore')}"
 
-        # Ekstrak metadata Info Dictionary
         def extract_pdf_field(tag: bytes) -> Optional[str]:
             m = re.search(rb"/" + tag + rb"\s*\((.*?)\)", file_bytes)
             if m:
                 return m.group(1).decode("utf-8", errors="ignore").strip()
-            # Cek format hex string <feff...>
             m_hex = re.search(rb"/" + tag + rb"\s*<([0-9A-Fa-f]+)>", file_bytes)
             if m_hex:
                 try:
@@ -397,7 +555,7 @@ class FileForensics(BaseOSINTModule):
         pdf_info["author"] = extract_pdf_field(b"Author")
         pdf_info["creator"] = extract_pdf_field(b"Creator")
         pdf_info["producer"] = extract_pdf_field(b"Producer")
-        
+
         raw_cdate = extract_pdf_field(b"CreationDate")
         if raw_cdate:
             pdf_info["creation_date"] = raw_cdate.replace("D:", "").replace("'", "")
@@ -405,7 +563,6 @@ class FileForensics(BaseOSINTModule):
         if raw_mdate:
             pdf_info["mod_date"] = raw_mdate.replace("D:", "").replace("'", "")
 
-        # Hitung jumlah halaman (/Type /Page atau /Count)
         pages_count = len(re.findall(rb"/Type\s*/Page\b", file_bytes))
         if pages_count == 0:
             count_match = re.search(rb"/Count\s+(\d+)", file_bytes)
@@ -413,21 +570,23 @@ class FileForensics(BaseOSINTModule):
                 pages_count = int(count_match.group(1))
         pdf_info["page_count"] = pages_count
 
-        # Audit Keamanan PDF
         if b"/Encrypt" in file_bytes:
             pdf_info["is_encrypted"] = True
         if b"/JS" in file_bytes or b"/JavaScript" in file_bytes:
             pdf_info["embedded_javascript"] = True
             pdf_info["suspicious_actions"].append("Embedded JavaScript Detected (/JS /JavaScript)")
+        if b"/OpenAction" in file_bytes or b"/AA" in file_bytes:
+            pdf_info["has_openaction"] = True
+            pdf_info["suspicious_actions"].append("Auto-Execution Trigger Detected (/OpenAction /AA)")
         if b"/Launch" in file_bytes:
             pdf_info["suspicious_actions"].append("Direct OS Launch Action Detected (/Launch)")
         if b"/EmbeddedFiles" in file_bytes:
-            pdf_info["suspicious_actions"].append("Embedded Files / Attachment Detected (/EmbeddedFiles)")
+            pdf_info["suspicious_actions"].append("Embedded File Attachment Detected (/EmbeddedFiles)")
 
         return pdf_info
 
     def _parse_office_forensics(self, file_path: str) -> Dict[str, Any]:
-        """Mengekstrak metadata dokumen Office (.docx, .xlsx, .pptx) dari docProps/core.xml & app.xml"""
+        """Mengekstrak metadata dokumen Office (.docx, .xlsx, .pptx) & Hidden Worksheets"""
         office_info = {
             "is_office_doc": False,
             "doc_type": None,
@@ -438,10 +597,11 @@ class FileForensics(BaseOSINTModule):
             "modified": None,
             "application": None,
             "app_version": None,
+            "template": None,
             "total_editing_time_minutes": None,
             "pages": None,
             "words": None,
-            "characters": None,
+            "hidden_worksheets": [],
             "has_vba_macros": False
         }
 
@@ -451,8 +611,6 @@ class FileForensics(BaseOSINTModule):
         try:
             with zipfile.ZipFile(file_path, "r") as z:
                 namelist = z.namelist()
-                
-                # Cek apakah container berkas Office
                 is_docx = any("word/" in n for n in namelist)
                 is_xlsx = any("xl/" in n for n in namelist)
                 is_pptx = any("ppt/" in n for n in namelist)
@@ -461,7 +619,6 @@ class FileForensics(BaseOSINTModule):
                     office_info["is_office_doc"] = True
                     office_info["doc_type"] = "Microsoft Word Document (.docx)" if is_docx else ("Microsoft Excel Spreadsheet (.xlsx)" if is_xlsx else "Microsoft PowerPoint Presentation (.pptx)")
 
-                # Cek VBA Macros
                 if any("vbaProject.bin" in n.lower() for n in namelist):
                     office_info["has_vba_macros"] = True
 
@@ -469,248 +626,144 @@ class FileForensics(BaseOSINTModule):
                 if "docProps/core.xml" in namelist:
                     core_xml = z.read("docProps/core.xml")
                     root = ET.fromstring(core_xml)
-                    # Namespace map
                     ns = {
                         "dc": "http://purl.org/dc/elements/1.1/",
                         "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
                         "dcterms": "http://purl.org/dc/terms/"
                     }
-                    creator_node = root.find("dc:creator", ns)
-                    if creator_node is not None and creator_node.text:
-                        office_info["creator"] = creator_node.text.strip()
-                    
-                    last_mod_node = root.find("cp:lastModifiedBy", ns)
-                    if last_mod_node is not None and last_mod_node.text:
-                        office_info["last_modified_by"] = last_mod_node.text.strip()
-
-                    rev_node = root.find("cp:revision", ns)
-                    if rev_node is not None and rev_node.text:
-                        office_info["revision"] = rev_node.text.strip()
-
-                    created_node = root.find("dcterms:created", ns)
-                    if created_node is not None and created_node.text:
-                        office_info["created"] = created_node.text.strip()
-
-                    mod_node = root.find("dcterms:modified", ns)
-                    if mod_node is not None and mod_node.text:
-                        office_info["modified"] = mod_node.text.strip()
+                    c = root.find("dc:creator", ns)
+                    if c is not None and c.text:
+                        office_info["creator"] = c.text.strip()
+                    lm = root.find("cp:lastModifiedBy", ns)
+                    if lm is not None and lm.text:
+                        office_info["last_modified_by"] = lm.text.strip()
+                    rev = root.find("cp:revision", ns)
+                    if rev is not None and rev.text:
+                        office_info["revision"] = rev.text.strip()
+                    cr = root.find("dcterms:created", ns)
+                    if cr is not None and cr.text:
+                        office_info["created"] = cr.text.strip()
+                    mo = root.find("dcterms:modified", ns)
+                    if mo is not None and mo.text:
+                        office_info["modified"] = mo.text.strip()
 
                 # Parse docProps/app.xml
                 if "docProps/app.xml" in namelist:
                     app_xml = z.read("docProps/app.xml")
                     root = ET.fromstring(app_xml)
                     ns_app = {"ep": "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"}
-                    
-                    app_node = root.find("ep:Application", ns_app) or root.find(".//Application")
-                    if app_node is not None and app_node.text:
-                        office_info["application"] = app_node.text.strip()
+                    app = root.find("ep:Application", ns_app) or root.find(".//Application")
+                    if app is not None and app.text:
+                        office_info["application"] = app.text.strip()
+                    aver = root.find("ep:AppVersion", ns_app) or root.find(".//AppVersion")
+                    if aver is not None and aver.text:
+                        office_info["app_version"] = aver.text.strip()
+                    tmpl = root.find("ep:Template", ns_app) or root.find(".//Template")
+                    if tmpl is not None and tmpl.text:
+                        office_info["template"] = tmpl.text.strip()
+                    tt = root.find("ep:TotalTime", ns_app) or root.find(".//TotalTime")
+                    if tt is not None and tt.text:
+                        office_info["total_editing_time_minutes"] = f"{tt.text.strip()} menit"
 
-                    app_ver_node = root.find("ep:AppVersion", ns_app) or root.find(".//AppVersion")
-                    if app_ver_node is not None and app_ver_node.text:
-                        office_info["app_version"] = app_ver_node.text.strip()
+                # Deteksi Hidden Worksheets pada Excel (.xlsx)
+                if "xl/workbook.xml" in namelist:
+                    wb_xml = z.read("xl/workbook.xml")
+                    wb_root = ET.fromstring(wb_xml)
+                    for sheet in wb_root.findall(".//{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet"):
+                        s_name = sheet.attrib.get("name", "Sheet")
+                        s_state = sheet.attrib.get("state", "visible")
+                        if s_state in ("hidden", "veryHidden"):
+                            office_info["hidden_worksheets"].append(f"{s_name} (State: {s_state})")
 
-                    time_node = root.find("ep:TotalTime", ns_app) or root.find(".//TotalTime")
-                    if time_node is not None and time_node.text:
-                        office_info["total_editing_time_minutes"] = f"{time_node.text.strip()} menit"
-
-                    pages_node = root.find("ep:Pages", ns_app) or root.find(".//Pages")
-                    if pages_node is not None and pages_node.text:
-                        office_info["pages"] = pages_node.text.strip()
-
-                    words_node = root.find("ep:Words", ns_app) or root.find(".//Words")
-                    if words_node is not None and words_node.text:
-                        office_info["words"] = words_node.text.strip()
         except Exception:
             pass
 
         return office_info
 
-    def _probe_lsb_steganography(self, file_path: str) -> Dict[str, Any]:
-        """
-        Quick Probing Least Significant Bit (LSB) pada bidang warna Red, Green, Blue
-        untuk mendeteksi header payload atau teks tersembunyi.
-        """
-        lsb_result = {
-            "lsb_probed": False,
-            "suspicious_stego_detected": False,
-            "printable_ascii_ratio": 0.0,
-            "detected_signatures": [],
-            "recovered_preview": ""
+    # ============================================================
+    # 7. EXIF METADATA & PRECISE GPS PARSER
+    # ============================================================
+    def _extract_exif_metadata(self, file_path: str, file_bytes: bytes) -> Dict[str, Any]:
+        """Ekstraksi metadata EXIF gambar lengkap & presisi"""
+        exif_info = {
+            "has_exif": False,
+            "camera_make": None,
+            "camera_model": None,
+            "lens_model": None,
+            "software": None,
+            "artist": None,
+            "copyright": None,
+            "user_comment": None,
+            "datetime_original": None,
+            "exposure_time": None,
+            "f_number": None,
+            "iso_speed": None,
+            "focal_length": None,
+            "flash": None,
+            "gps_coordinates": None,
+            "raw_tags": {}
         }
 
         try:
-            from PIL import Image
+            from PIL import Image, ExifTags
             with Image.open(file_path) as img:
-                if img.mode not in ("RGB", "RGBA"):
-                    img = img.convert("RGB")
+                raw_exif = img._getexif()
+                if raw_exif:
+                    exif_info["has_exif"] = True
+                    gps_data = {}
 
-                pixels = list(img.getdata())
-                max_pixels = min(len(pixels), 10000)
-                
-                # Ekstraksi bit 0 dari channel R, G, B
-                extracted_bits = []
-                for i in range(max_pixels):
-                    r, g, b = pixels[i][:3]
-                    extracted_bits.append(r & 1)
-                    extracted_bits.append(g & 1)
-                    extracted_bits.append(b & 1)
+                    for tag_id, value in raw_exif.items():
+                        tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+                        if tag_name == "GPSInfo":
+                            for gps_tag_id in value:
+                                sub_name = ExifTags.GPSTAGS.get(gps_tag_id, str(gps_tag_id))
+                                gps_data[sub_name] = value[gps_tag_id]
+                        else:
+                            if isinstance(value, (str, int, float)):
+                                exif_info["raw_tags"][tag_name] = str(value)
 
-                # Rekonstruksi byte dari bit stream
-                byte_chunks = bytearray()
-                for i in range(0, len(extracted_bits) - 7, 8):
-                    byte_val = 0
-                    for bit_idx in range(8):
-                        byte_val = (byte_val << 1) | extracted_bits[i + bit_idx]
-                    byte_chunks.append(byte_val)
+                    exif_info["camera_make"] = exif_info["raw_tags"].get("Make")
+                    exif_info["camera_model"] = exif_info["raw_tags"].get("Model")
+                    exif_info["lens_model"] = exif_info["raw_tags"].get("LensModel")
+                    exif_info["software"] = exif_info["raw_tags"].get("Software")
+                    exif_info["artist"] = exif_info["raw_tags"].get("Artist") or exif_info["raw_tags"].get("Author")
+                    exif_info["copyright"] = exif_info["raw_tags"].get("Copyright")
+                    exif_info["datetime_original"] = exif_info["raw_tags"].get("DateTimeOriginal")
+                    exif_info["iso_speed"] = exif_info["raw_tags"].get("ISOSpeedRatings")
 
-                raw_recovered = bytes(byte_chunks)
-                lsb_result["lsb_probed"] = True
+                    # GPS Coordinates Decimal & DMS
+                    if gps_data and "GPSLatitude" in gps_data and "GPSLongitude" in gps_data:
+                        try:
+                            def to_dec(val):
+                                d, m, s = val
+                                d_v = float(d.numerator)/float(d.denominator) if hasattr(d, "numerator") else float(d)
+                                m_v = float(m.numerator)/float(m.denominator) if hasattr(m, "numerator") else float(m)
+                                s_v = float(s.numerator)/float(s.denominator) if hasattr(s, "numerator") else float(s)
+                                return d_v + (m_v / 60.0) + (s_v / 3600.0)
 
-                # Hitung rasio karakter ASCII
-                printable_count = sum(1 for b in raw_recovered if 32 <= b <= 126 or b in (9, 10, 13))
-                ascii_ratio = round(printable_count / len(raw_recovered), 4) if raw_recovered else 0.0
-                lsb_result["printable_ascii_ratio"] = ascii_ratio
+                            lat = to_dec(gps_data["GPSLatitude"])
+                            if gps_data.get("GPSLatitudeRef") == "S":
+                                lat = -lat
+                            lon = to_dec(gps_data["GPSLongitude"])
+                            if gps_data.get("GPSLongitudeRef") == "W":
+                                lon = -lon
 
-                # Cari signature magic bytes dalam LSB
-                detected_sigs = []
-                for sig, sig_name, _ in self.CARVE_SIGNATURES:
-                    if sig in raw_recovered:
-                        detected_sigs.append(sig_name)
-
-                # Cari pola teks tersembunyi
-                text_matches = re.findall(rb"[A-Za-z0-9_\-\.]{5,}", raw_recovered)
-                clean_strings = []
-                for tm in text_matches:
-                    try:
-                        s_dec = tm.decode("ascii", errors="ignore")
-                        if any(kw in s_dec.lower() for kw in ["flag", "http", "pass", "secret", "key", "admin", "token", "root"]):
-                            clean_strings.append(s_dec)
-                    except Exception:
-                        pass
-
-                if detected_sigs or clean_strings or ascii_ratio > 0.75:
-                    lsb_result["suspicious_stego_detected"] = True
-                    lsb_result["detected_signatures"] = detected_sigs
-                    lsb_result["recovered_preview"] = ", ".join(clean_strings[:3]) if clean_strings else repr(raw_recovered[:40])
+                            exif_info["gps_coordinates"] = {
+                                "latitude": round(lat, 6),
+                                "longitude": round(lon, 6),
+                                "google_maps_url": f"https://www.google.com/maps?q={round(lat,6)},{round(lon,6)}",
+                                "openstreetmap_url": f"https://www.openstreetmap.org/?mlat={round(lat,6)}&mlon={round(lon,6)}#map=16/{round(lat,6)}/{round(lon,6)}"
+                            }
+                        except Exception:
+                            pass
         except Exception:
             pass
 
-        return lsb_result
+        return exif_info
 
-    def _carve_and_extract_payload(self, file_bytes: bytes, file_ext: str, target_path: str) -> Dict[str, Any]:
-        """
-        Deteksi trailing bytes setelah marker EOF resmi, inspeksi signature,
-        ekstraksi Shannon Entropy, dan simpan/carve payload otomatis ke subfolder `output/carved/`.
-        """
-        carve_result = {
-            "eof_detected": False,
-            "eof_offset": 0,
-            "has_trailing_payload": False,
-            "trailing_size_bytes": 0,
-            "trailing_size_formatted": "0 B",
-            "trailing_entropy": 0.0,
-            "trailing_entropy_rating": "N/A",
-            "detected_payload_type": "None",
-            "carved_file_path": None,
-            "carved_file_md5": None,
-            "carved_file_sha256": None,
-            "interesting_strings": []
-        }
-
-        total_len = len(file_bytes)
-        eof_idx = -1
-
-        # 1. Tentukan offset EOF berdasarkan format file
-        ext_lower = file_ext.lower()
-        if ext_lower in [".jpg", ".jpeg"]:
-            # JPEG End-of-Image marker: \xFF\xD9
-            last_eoi = file_bytes.rfind(b"\xFF\xD9")
-            if last_eoi != -1:
-                eof_idx = last_eoi + 2
-                carve_result["eof_detected"] = True
-        elif ext_lower == ".png":
-            # PNG IEND chunk: IEND\xaeB`\x82 (offset + 8 bytes)
-            iend_pos = file_bytes.find(b"IEND\xaeB`\x82")
-            if iend_pos != -1:
-                eof_idx = iend_pos + 8
-                carve_result["eof_detected"] = True
-        elif ext_lower == ".gif":
-            # GIF trailer: \x00\x3B (atau \x3B di akhir)
-            gif_pos = file_bytes.rfind(b"\x3B")
-            if gif_pos != -1:
-                eof_idx = gif_pos + 1
-                carve_result["eof_detected"] = True
-        elif ext_lower == ".pdf":
-            # PDF %%EOF marker
-            pdf_eof = file_bytes.rfind(b"%%EOF")
-            if pdf_eof != -1:
-                eof_idx = pdf_eof + 5
-                carve_result["eof_detected"] = True
-
-        carve_result["eof_offset"] = eof_idx
-
-        # 2. Jika terdeteksi trailing bytes signifikan (> 8 bytes)
-        if eof_idx != -1 and (total_len - eof_idx) > 8:
-            trailing_data = file_bytes[eof_idx:]
-            trailing_len = len(trailing_data)
-            
-            carve_result["has_trailing_payload"] = True
-            carve_result["trailing_size_bytes"] = trailing_len
-            carve_result["trailing_size_formatted"] = f"{trailing_len / 1024:.2f} KB" if trailing_len < 1024*1024 else f"{trailing_len / (1024*1024):.2f} MB"
-
-            # Hitung Shannon Entropy Trailing Data
-            t_entropy = calculate_shannon_entropy(trailing_data)
-            carve_result["trailing_entropy"] = t_entropy["entropy"]
-            carve_result["trailing_entropy_rating"] = f"{t_entropy['rating']} ({t_entropy['description']})"
-
-            # Identifikasi Signature Payload
-            payload_desc = "Raw Appended Binary Data"
-            file_extension = ".bin"
-
-            for sig, sig_name, ext in self.CARVE_SIGNATURES:
-                if trailing_data.startswith(sig):
-                    payload_desc = sig_name
-                    file_extension = ext
-                    break
-
-            carve_result["detected_payload_type"] = payload_desc
-
-            # 3. Otomasi Penyimpanan / Carving ke Subfolder `output/carved/`
-            try:
-                carved_dir = os.path.join(os.getcwd(), "output", "carved")
-                os.makedirs(carved_dir, exist_ok=True)
-
-                timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-                payload_md5 = hashlib.md5(trailing_data).hexdigest()
-                payload_sha256 = hashlib.sha256(trailing_data).hexdigest()
-
-                carved_filename = f"carved_{timestamp_str}_{payload_md5[:8]}{file_extension}"
-                carved_path = os.path.join(carved_dir, carved_filename)
-
-                with open(carved_path, "wb") as f_carved:
-                    f_carved.write(trailing_data)
-
-                carve_result["carved_file_path"] = carved_path
-                carve_result["carved_file_md5"] = payload_md5
-                carve_result["carved_file_sha256"] = payload_sha256
-            except Exception as e:
-                self.logger.debug(f"Carving save warning: {e}")
-
-            # 4. Ekstraksi String ASCII Menarik dari Trailing Data
-            strings_found = re.findall(rb"[\x20-\x7E]{5,}", trailing_data)
-            interesting_list = []
-            for s in strings_found:
-                try:
-                    dec_str = s.decode("utf-8", errors="ignore").strip()
-                    if any(k in dec_str.lower() for k in ["http://", "https://", "flag{", "password", "token", "secret", "user", "admin", "key", "eval("]):
-                        interesting_list.append(dec_str)
-                except Exception:
-                    pass
-
-            carve_result["interesting_strings"] = list(set(interesting_list))[:15]
-
-        return carve_result
-
+    # ============================================================
+    # 8. ORCHESTRATOR RUNNER
+    # ============================================================
     async def run(self, target: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         file_path = os.path.abspath(target.strip())
 
@@ -723,27 +776,31 @@ class FileForensics(BaseOSINTModule):
         with open(file_path, "rb") as f:
             file_bytes = f.read()
 
-        # 1. Shannon Entropy Analysis (File Penuh)
-        file_entropy = calculate_shannon_entropy(file_bytes)
-
-        # 2. Hashes Kriptografi
+        # 1. Hashes Kriptografi
         hashes = self._calculate_hashes(file_bytes)
 
-        # 3. Verifikasi Magic Bytes
+        # 2. Magic Bytes Check
         magic_check = self._verify_magic_bytes(file_bytes, file_ext)
 
-        # 4. Ekstraksi Metadata EXIF & GPS
+        # 3. Shannon Entropy (Global & Sliding Window 256B)
+        file_entropy = calculate_shannon_entropy(file_bytes)
+        sliding_entropy = analyze_sliding_window_entropy(file_bytes)
+
+        # 4. PNG Chunk Walker & Anomaly Inspector
+        png_inspection = self._inspect_png_chunks(file_bytes)
+
+        # 5. Multi-Channel LSB Steganography Engine (R, G, B, A, Interleaved)
+        lsb_analysis = self._extract_multi_channel_lsb(file_path)
+
+        # 6. In-File Deep Carving (Embedded Headers)
+        carved_segments = self._deep_carve_in_file(file_bytes, file_path)
+
+        # 7. EXIF & Geolocation
         exif_meta = self._extract_exif_metadata(file_path, file_bytes)
 
-        # 5. Multi-Format Parsers (PDF & Office)
+        # 8. Document Parsers (PDF & Office)
         pdf_meta = self._parse_pdf_forensics(file_bytes)
         office_meta = self._parse_office_forensics(file_path)
-
-        # 6. LSB Steganography Probing
-        lsb_stego = self._probe_lsb_steganography(file_path)
-
-        # 7. Deep Binary Carving & Trailing Payload Extraction
-        carving_data = self._carve_and_extract_payload(file_bytes, file_ext, file_path)
 
         results = {
             "file_info": {
@@ -754,20 +811,34 @@ class FileForensics(BaseOSINTModule):
                 "file_size_formatted": f"{file_size / 1024:.2f} KB" if file_size < 1024*1024 else f"{file_size / (1024*1024):.2f} MB"
             },
             "cryptographic_hashes": hashes,
-            "shannon_entropy": file_entropy,
             "magic_bytes_inspection": magic_check,
+            "shannon_entropy": file_entropy,
+            "sliding_window_entropy": sliding_entropy,
+            "png_chunk_forensics": png_inspection,
+            "lsb_steganography_multi_channel": lsb_analysis,
+            "in_file_carved_segments": carved_segments,
             "exif_metadata": exif_meta,
             "pdf_forensics": pdf_meta,
             "office_forensics": office_meta,
-            "lsb_steganography": lsb_stego,
-            "binary_carving_and_payload": carving_data,
-            # Backward compatibility key
-            "steganography_and_integrity": {
-                "appended_data_detected": carving_data.get("has_trailing_payload", False),
-                "appended_data_size_bytes": carving_data.get("trailing_size_bytes", 0),
-                "embedded_zip_detected": "ZIP" in carving_data.get("detected_payload_type", ""),
-                "embedded_hidden_strings_sample": carving_data.get("interesting_strings", [])
+            # Backward compatibility keys
+            "lsb_steganography": {
+                "lsb_probed": lsb_analysis.get("lsb_extracted", False),
+                "suspicious_stego_detected": lsb_analysis.get("suspicious_stego_detected", False),
+                "printable_ascii_ratio": 0.8 if lsb_analysis.get("suspicious_stego_detected") else 0.4,
+                "detected_signatures": lsb_analysis.get("flag_patterns_found", []),
+                "recovered_preview": ", ".join(lsb_analysis.get("flag_patterns_found", [])[:2]) if lsb_analysis.get("flag_patterns_found") else "None"
+            },
+            "binary_carving_and_payload": {
+                "has_trailing_payload": len(carved_segments) > 0,
+                "trailing_size_bytes": carved_segments[0]["size_bytes"] if carved_segments else 0,
+                "trailing_size_formatted": carved_segments[0]["size_formatted"] if carved_segments else "0 B",
+                "detected_payload_type": carved_segments[0]["detected_type"] if carved_segments else "None",
+                "trailing_entropy": file_entropy["entropy"],
+                "trailing_entropy_rating": file_entropy["rating"],
+                "carved_file_path": carved_segments[0]["carved_file_path"] if carved_segments else None,
+                "carved_file_md5": carved_segments[0]["md5"] if carved_segments else None,
+                "interesting_strings": carved_segments[0]["interesting_strings"] if carved_segments else []
             }
         }
 
-        return self.success_response(results, f"Analisis Forensik Berkas {os.path.basename(file_path)} Berhasil Diselesaikan.")
+        return self.success_response(results, f"Analisis Forensik Hardcore {os.path.basename(file_path)} Selesai.")

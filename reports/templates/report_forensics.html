@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PATRICT-OSINT | Media & File Forensics - {{ file_info.file_name }}</title>
+    <title>PATRICT-OSINT | DFIR & Media Forensics - {{ file_info.file_name }}</title>
     <style>
         :root {
             --bg-primary: #0a0e17;
@@ -55,8 +55,8 @@
         .badge-red { background: rgba(255, 82, 82, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
         .badge-yellow { background: rgba(255, 214, 0, 0.15); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
 
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
-        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 25px; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px; }
         @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
 
         .card {
@@ -80,7 +80,8 @@
         }
 
         .info-table { width: 100%; border-collapse: collapse; }
-        .info-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .info-table td, .info-table th { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; text-align: left; }
+        .info-table th { color: var(--accent-cyan); font-weight: 600; background: rgba(255,255,255,0.02); }
         .info-table td:first-child { color: var(--text-muted); width: 35%; font-weight: 500; }
         .info-table td:last-child { color: var(--text-main); font-family: monospace; word-break: break-all; }
 
@@ -94,6 +95,7 @@
             border: 1px solid var(--border-color);
             max-height: 250px;
         }
+        code { font-family: monospace; color: var(--accent-green); }
     </style>
 </head>
 <body>
@@ -101,11 +103,11 @@
         <!-- Header -->
         <div class="header-card">
             <div class="header-title">
-                <h1>PATRICT-OSINT Media & File Forensics</h1>
+                <h1>PATRICT-OSINT Hardcore DFIR & File Forensics</h1>
                 <p>Target File: <strong>{{ file_info.file_name }}</strong> ({{ file_info.file_size_formatted }})</p>
             </div>
             <div>
-                <span class="badge badge-cyan">Forensics Engine</span>
+                <span class="badge badge-cyan">DFIR & CTF Analyzer</span>
                 <span class="badge badge-green">{{ timestamp }}</span>
             </div>
         </div>
@@ -147,13 +149,13 @@
                 <div class="card-header">📊 Shannon Entropy Analysis</div>
                 <table class="info-table">
                     <tr>
-                        <td>File Entropy</td>
+                        <td>Global Entropy</td>
                         <td>
                             <strong>{{ forensics_data.shannon_entropy.entropy }}</strong> bits/byte
                         </td>
                     </tr>
                     <tr>
-                        <td>Rating Rating</td>
+                        <td>Rating Status</td>
                         <td>
                             {% if forensics_data.shannon_entropy.rating == 'VERY HIGH' %}
                             <span class="badge badge-red">VERY HIGH</span>
@@ -188,15 +190,13 @@
                 <table class="info-table">
                     <tr><td>Kamera Make/Model</td><td>{{ forensics_data.exif_metadata.camera_make or '-' }} {{ forensics_data.exif_metadata.camera_model or '' }}</td></tr>
                     <tr><td>Model Lensa</td><td>{{ forensics_data.exif_metadata.lens_model or '-' }}</td></tr>
-                    <tr><td>Software Editor</td><td>{{ forensics_data.exif_metadata.software or '-' }}</td></tr>
                     <tr><td>Author / Hak Cipta</td><td>{{ forensics_data.exif_metadata.artist or '-' }} (© {{ forensics_data.exif_metadata.copyright or '-' }})</td></tr>
-                    <tr><td>Parameter Optik</td><td>{{ forensics_data.exif_metadata.exposure_time or '' }} | {{ forensics_data.exif_metadata.f_number or '' }} | ISO {{ forensics_data.exif_metadata.iso_speed or '' }} | {{ forensics_data.exif_metadata.focal_length or '' }}</td></tr>
                     <tr><td>Waktu Pengambilan</td><td>{{ forensics_data.exif_metadata.datetime_original or '-' }}</td></tr>
                     <tr>
                         <td>GPS Koordinat</td>
                         <td>
                             {% if forensics_data.exif_metadata.gps_coordinates %}
-                            {{ forensics_data.exif_metadata.gps_coordinates.latitude }}, {{ forensics_data.exif_metadata.gps_coordinates.longitude }} ({{ forensics_data.exif_metadata.gps_coordinates.dms_formatted }})<br>
+                            {{ forensics_data.exif_metadata.gps_coordinates.latitude }}, {{ forensics_data.exif_metadata.gps_coordinates.longitude }}<br>
                             <a href="{{ forensics_data.exif_metadata.gps_coordinates.google_maps_url }}" target="_blank" style="color: var(--accent-cyan); font-weight: 600;">Buka di Google Maps ↗</a>
                             {% else %}
                             <span style="color: var(--text-muted);">Tidak ada tag GPS di foto</span>
@@ -206,6 +206,112 @@
                 </table>
             </div>
         </div>
+
+        <!-- PNG Chunk Walker & Anomaly Inspector (if PNG) -->
+        {% if forensics_data.png_chunk_forensics and forensics_data.png_chunk_forensics.is_png %}
+        <div class="card">
+            <div class="card-header">🧩 PNG Chunk Walker & Anomaly Inspector</div>
+            <table class="info-table">
+                <tr><td>Total Chunks</td><td>{{ forensics_data.png_chunk_forensics.total_chunks_found }} Chunks Terbaca</td></tr>
+                <tr>
+                    <td>Status CRC-32</td>
+                    <td>
+                        {% if forensics_data.png_chunk_forensics.tampered_crc_detected %}
+                        <span class="badge badge-red">⚠️ CRC-32 TAMPERED (POTENTIAL CROP / HEIGHT TRICK)</span>
+                        {% else %}
+                        <span class="badge badge-green">✔ ALL CRC-32 MATCH</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if forensics_data.png_chunk_forensics.custom_chunks %}
+                <tr>
+                    <td>Custom / Private Chunks</td>
+                    <td>
+                        {% for cc in forensics_data.png_chunk_forensics.custom_chunks %}
+                        <div><strong>[{{ cc.chunk_type }}]</strong> Offset: {{ cc.offset }}, Size: {{ cc.length }}B - Preview: <code>{{ cc.printable_preview }}</code>
+                        {% if cc.xor_findings %}
+                            {% for xf in cc.xor_findings %}
+                            <br><span style="color: var(--accent-green);">✔ [XOR Cracked] {{ xf.method }}: <strong>{{ xf.decrypted_snippet }}</strong></span>
+                            {% endfor %}
+                        {% endif %}
+                        </div>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if forensics_data.png_chunk_forensics.anomalies %}
+                <tr>
+                    <td>Anomali Chunk</td>
+                    <td>
+                        {% for an in forensics_data.png_chunk_forensics.anomalies %}
+                        <div style="color: var(--accent-red);">• {{ an }}</div>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Multi-Channel LSB Steganography -->
+        {% if forensics_data.lsb_steganography_multi_channel and forensics_data.lsb_steganography_multi_channel.lsb_extracted %}
+        <div class="card">
+            <div class="card-header">🧪 Multi-Channel LSB Steganography Engine (RGB & Alpha)</div>
+            <table class="info-table">
+                <tr><td>Kanal Dianalisis</td><td>{{ forensics_data.lsb_steganography_multi_channel.channels_analyzed | join(', ') }}</td></tr>
+                <tr>
+                    <td>Flag & Secret Sniffer</td>
+                    <td>
+                        {% if forensics_data.lsb_steganography_multi_channel.flag_patterns_found %}
+                            {% for fp in forensics_data.lsb_steganography_multi_channel.flag_patterns_found %}
+                            <span class="badge badge-red" style="font-size: 13px; margin: 2px;">{{ fp }}</span><br>
+                            {% endfor %}
+                        {% else %}
+                            <span class="badge badge-green">✔ CLEAN (NO PLAINTEXT FLAG FOUND)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if forensics_data.lsb_steganography_multi_channel.extracted_urls %}
+                <tr><td>Extracted URLs</td><td>{{ forensics_data.lsb_steganography_multi_channel.extracted_urls | join('<br>') | safe }}</td></tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- In-File Deep Carving (if any) -->
+        {% if forensics_data.in_file_carved_segments %}
+        <div class="card">
+            <div class="card-header">⛏️ In-File Deep Carving & Embedded Payloads</div>
+            <table class="info-table">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">#</th>
+                        <th style="width: 25%;">Tipe Payload</th>
+                        <th style="width: 15%;">Offset</th>
+                        <th style="width: 15%;">Ukuran</th>
+                        <th style="width: 40%;">File Carved Path & Hashes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for seg in forensics_data.in_file_carved_segments %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong>{{ seg.detected_type }}</strong></td>
+                        <td>Offset {{ seg.offset }}</td>
+                        <td>{{ seg.size_formatted }}</td>
+                        <td>
+                            <code>{{ seg.carved_file_path }}</code><br>
+                            <span style="color: var(--text-muted); font-size: 11px;">MD5: {{ seg.md5 }}</span>
+                            {% if seg.interesting_strings %}
+                            <br><span style="color: var(--accent-cyan); font-size: 11px;">Strings: {{ seg.interesting_strings | join(', ') }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
 
         <!-- PDF Document Forensics (if applicable) -->
         {% if forensics_data.pdf_forensics and forensics_data.pdf_forensics.is_pdf %}
@@ -234,7 +340,9 @@
                 <tr><td>Author / Creator</td><td>{{ forensics_data.office_forensics.creator or '-' }}</td></tr>
                 <tr><td>Terakhir Diubah Oleh</td><td>{{ forensics_data.office_forensics.last_modified_by or '-' }} (Revisi: {{ forensics_data.office_forensics.revision or '1' }})</td></tr>
                 <tr><td>Aplikasi Pembuat</td><td>{{ forensics_data.office_forensics.application or '-' }} (v{{ forensics_data.office_forensics.app_version or '-' }})</td></tr>
-                <tr><td>Total Waktu Edit</td><td>{{ forensics_data.office_forensics.total_editing_time_minutes or '-' }}</td></tr>
+                {% if forensics_data.office_forensics.hidden_worksheets %}
+                <tr><td>Hidden Worksheets</td><td><span class="badge badge-red">{{ forensics_data.office_forensics.hidden_worksheets | join(', ') }}</span></td></tr>
+                {% endif %}
                 <tr>
                     <td>Status VBA Macros</td>
                     <td>
@@ -249,68 +357,8 @@
         </div>
         {% endif %}
 
-        <!-- Steganography, LSB & Binary Carving Grid -->
-        <div class="grid-2">
-            <!-- LSB Steganography -->
-            <div class="card">
-                <div class="card-header">🧪 LSB Steganography Quick Probing</div>
-                <table class="info-table">
-                    <tr>
-                        <td>Status LSB</td>
-                        <td>
-                            {% if forensics_data.lsb_steganography.suspicious_stego_detected %}
-                            <span class="badge badge-red">⚠️ ANOMALY / SIGNATURE DETECTED</span>
-                            {% else %}
-                            <span class="badge badge-green">✔ CLEAN (NO LSB ANOMALY)</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr><td>Rasio Karakter ASCII</td><td>{{ (forensics_data.lsb_steganography.printable_ascii_ratio * 100) | round(1) }}% Printable Characters</td></tr>
-                    {% if forensics_data.lsb_steganography.detected_signatures %}
-                    <tr><td>Signature Terdeteksi</td><td>{{ forensics_data.lsb_steganography.detected_signatures | join(', ') }}</td></tr>
-                    {% endif %}
-                    {% if forensics_data.lsb_steganography.recovered_preview %}
-                    <tr><td>Preview LSB Snippet</td><td><code>{{ forensics_data.lsb_steganography.recovered_preview }}</code></td></tr>
-                    {% endif %}
-                </table>
-            </div>
-
-            <!-- Deep Binary Carving -->
-            <div class="card">
-                <div class="card-header">⛏️ Binary Carving & Trailing Payload</div>
-                <table class="info-table">
-                    <tr>
-                        <td>Status Trailing Data</td>
-                        <td>
-                            {% if forensics_data.binary_carving_and_payload.has_trailing_payload %}
-                            <span class="badge badge-red">⚠️ {{ forensics_data.binary_carving_and_payload.trailing_size_formatted }} AFTER EOF</span>
-                            {% else %}
-                            <span class="badge badge-green">✔ CLEAN EOF</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% if forensics_data.binary_carving_and_payload.has_trailing_payload %}
-                    <tr><td>Tipe Payload</td><td><strong>{{ forensics_data.binary_carving_and_payload.detected_payload_type }}</strong></td></tr>
-                    <tr><td>Entropy Payload</td><td>{{ forensics_data.binary_carving_and_payload.trailing_entropy }} bits/byte</td></tr>
-                    <tr><td>File Hasil Carve</td><td><code>{{ forensics_data.binary_carving_and_payload.carved_file_path }}</code></td></tr>
-                    <tr><td>MD5 Carved File</td><td>{{ forensics_data.binary_carving_and_payload.carved_file_md5 }}</td></tr>
-                    {% endif %}
-                </table>
-            </div>
-        </div>
-
-        <!-- Hidden / Extracted Strings -->
-        {% if forensics_data.binary_carving_and_payload.interesting_strings or forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}
-        <div class="card" style="margin-bottom: 25px;">
-            <div class="card-header">📜 Extracted Interesting Printable Strings (Sample)</div>
-            <pre>{% for s in forensics_data.binary_carving_and_payload.interesting_strings %}{{ s }}
-{% endfor %}{% for s in forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}{{ s }}
-{% endfor %}</pre>
-        </div>
-        {% endif %}
-
         <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px;">
-            PATRICT-OSINT v2.5 Media & File Forensics Engine &bull; Generated Automatically
+            PATRICT-OSINT v2.6 Hardcore DFIR & File Forensics Engine &bull; Generated Automatically
         </div>
     </div>
 </body>
