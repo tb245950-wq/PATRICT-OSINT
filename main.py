@@ -442,13 +442,13 @@ def select_menu_interactive(options: List[str]) -> int:
 
     def draw(first: bool = False):
         if not first:
-            sys.stdout.write(f"\033[{num_options + 2}F")
-        sys.stdout.write(f"{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}\033[K\n\n")
+            sys.stdout.write(f"\033[{num_options + 2}A\r")
+        sys.stdout.write(f"\r\033[K{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}\r\n\r\n")
         for idx, opt in enumerate(options):
             if idx == selected_idx:
-                sys.stdout.write(f"  {CYAN}>  {WHITE}{opt}{RESET}\033[K\n")
+                sys.stdout.write(f"\r\033[K  {CYAN}>  {WHITE}{opt}{RESET}\r\n")
             else:
-                sys.stdout.write(f"     {WHITE}{opt}{RESET}\033[K\n")
+                sys.stdout.write(f"\r\033[K     {WHITE}{opt}{RESET}\r\n")
         sys.stdout.flush()
 
     draw(first=True)
@@ -456,12 +456,12 @@ def select_menu_interactive(options: List[str]) -> int:
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
-        tty.setraw(fd)
+        tty.setcbreak(fd)
         while True:
             ch = sys.stdin.read(1)
             if ch == "\x1b":
                 ch2 = sys.stdin.read(1)
-                if ch2 == "[":
+                if ch2 in ("[", "O"):
                     ch3 = sys.stdin.read(1)
                     if ch3 == "A":  # Up Arrow
                         selected_idx = (selected_idx - 1) % num_options
@@ -477,6 +477,12 @@ def select_menu_interactive(options: List[str]) -> int:
                         sys.stdin.read(1)  # consume ~
                         selected_idx = (selected_idx + 1) % num_options
                         draw()
+                    elif ch3 in ("H", "1"):  # Home
+                        selected_idx = 0
+                        draw()
+                    elif ch3 in ("F", "4"):  # End
+                        selected_idx = num_options - 1
+                        draw()
             elif ch in ("\r", "\n"):
                 break
             elif ch in ("k", "w", "K", "W"):
@@ -485,13 +491,12 @@ def select_menu_interactive(options: List[str]) -> int:
             elif ch in ("j", "s", "J", "S"):
                 selected_idx = (selected_idx + 1) % num_options
                 draw()
-            elif ch in ("q", "Q", "\x03"):
+            elif ch in ("q", "Q", "\x03", "\x04"):
                 selected_idx = num_options - 1
                 break
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        # Tampilkan kembali kursor
-        sys.stdout.write("\033[?25h")
+        sys.stdout.write("\033[?25h\r")
         sys.stdout.flush()
 
     return selected_idx
