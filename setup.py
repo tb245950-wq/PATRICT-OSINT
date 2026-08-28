@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="patrict-osint",
-    version="2.0.0",
-    description="Modular Monorepo OSINT Framework",
+    version="2.2.0",
+    description="Automated Multi-Domain OSINT & Digital Forensics Framework",
     author="Muhammad Mughni",
     py_modules=["main"],
     packages=find_packages(),
