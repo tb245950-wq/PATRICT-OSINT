@@ -316,10 +316,10 @@ class PATRICTOrchestrator:
             self.print_banner()
 
         type_labels = {
-            "phone": "Phone Intelligence (Telekomunikasi & Sosmed)",
-            "web": "Web & Infrastructure Intelligence (WhatWeb, WAF, DNS)",
-            "file": "Media & File Forensics (EXIF, Hash, Stego, Integrity)",
-            "all": "All Reconnaissance Domains"
+            "phone": "Phone Intelligence",
+            "web": "Web & Tech Recon",
+            "file": "Media & File Forensics",
+            "all": "All Domains"
         }
         
         print(f"[*] Target Reconnaissance : {WHITE}{target}{RESET}")
@@ -412,6 +412,90 @@ def detect_target_type(target: str) -> str:
         return "file"
     return "phone"
 
+def select_menu_interactive(options: List[str]) -> int:
+    """
+    Selektor menu interaktif berbasis keyboard (Up/Down Arrow, Page Up, Page Down, Enter)
+    """
+    try:
+        import tty
+        import termios
+        TERMIOS_AVAILABLE = True
+    except ImportError:
+        TERMIOS_AVAILABLE = False
+
+    if not TERMIOS_AVAILABLE or not sys.stdin.isatty():
+        print(f"{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}")
+        for i, opt in enumerate(options):
+            print(f"  [{i+1}] {opt}")
+        try:
+            val = input().strip()
+            return int(val) - 1
+        except Exception:
+            return 0
+
+    selected_idx = 0
+    num_options = len(options)
+
+    # Sembunyikan kursor saat navigasi
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+
+    def draw(first: bool = False):
+        if not first:
+            sys.stdout.write(f"\033[{num_options + 2}F")
+        sys.stdout.write(f"{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}\033[K\n\n")
+        for idx, opt in enumerate(options):
+            if idx == selected_idx:
+                sys.stdout.write(f"  {CYAN}>  {WHITE}{opt}{RESET}\033[K\n")
+            else:
+                sys.stdout.write(f"     {WHITE}{opt}{RESET}\033[K\n")
+        sys.stdout.flush()
+
+    draw(first=True)
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\x1b":
+                ch2 = sys.stdin.read(1)
+                if ch2 == "[":
+                    ch3 = sys.stdin.read(1)
+                    if ch3 == "A":  # Up Arrow
+                        selected_idx = (selected_idx - 1) % num_options
+                        draw()
+                    elif ch3 == "B":  # Down Arrow
+                        selected_idx = (selected_idx + 1) % num_options
+                        draw()
+                    elif ch3 == "5":  # Page Up
+                        sys.stdin.read(1)  # consume ~
+                        selected_idx = (selected_idx - 1) % num_options
+                        draw()
+                    elif ch3 == "6":  # Page Down
+                        sys.stdin.read(1)  # consume ~
+                        selected_idx = (selected_idx + 1) % num_options
+                        draw()
+            elif ch in ("\r", "\n"):
+                break
+            elif ch in ("k", "w", "K", "W"):
+                selected_idx = (selected_idx - 1) % num_options
+                draw()
+            elif ch in ("j", "s", "J", "S"):
+                selected_idx = (selected_idx + 1) % num_options
+                draw()
+            elif ch in ("q", "Q", "\x03"):
+                selected_idx = num_options - 1
+                break
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        # Tampilkan kembali kursor
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
+
+    return selected_idx
+
 def print_help_menu():
     help_text = rf"""
 {BLUE}==================================================================={RESET}
@@ -433,9 +517,9 @@ def print_help_menu():
   digital modular generasi baru untuk investigasi multi-domain profesional.
 
 {YELLOW}DOMAIN TARGET:{RESET}
-  {CYAN}phone{RESET}       Penyelidikan nomor telepon internasional, HLR, operator & sosmed
-  {CYAN}web{RESET}         Reconnaissance web, WhatWeb tech stack, WAF, redirect & DNS
-  {CYAN}file{RESET}        Forensik media/gambar, EXIF, GPS coordinates, hash & steganografi
+  {CYAN}phone{RESET}       Penyelidikan nomor telepon internasional, HLR, operator dan sosmed
+  {CYAN}web{RESET}         Reconnaissance web, WhatWeb tech stack, WAF, redirect dan DNS
+  {CYAN}file{RESET}        Forensik media/gambar, EXIF, GPS coordinates, hash dan steganografi
   {CYAN}all{RESET}         Jalankan seluruh modul tanpa batasan domain
 
 {YELLOW}OPSI / FLAGS:{RESET}
@@ -490,11 +574,11 @@ async def main_async():
         usage="osint [target] [options]",
         add_help=False
     )
-    parser.add_argument("target_pos", nargs="?", help="Target penyelidikan (nomor telepon, URL/domain, atau file gambar)", default=None)
-    parser.add_argument("-t", "--target", help="Target penyelidikan (opsional jika menggunakan positional argument)", default=None)
-    parser.add_argument("-m", "--mode", choices=["phone", "web", "file", "all"], help="Mode penyelidikan (phone, web, file, all)", default=None)
-    parser.add_argument("-M", "--modules", help="Daftar modul spesifik dipisahkan koma (contoh: -M web_osint)", default=None)
-    parser.add_argument("-S", "--scope", choices=["quick", "default", "deep", "full"], help="Cakupan penyelidikan (quick, default, deep, full)", default="default")
+    parser.add_argument("target_pos", nargs="?", help="Target penyelidikan", default=None)
+    parser.add_argument("-t", "--target", help="Target penyelidikan", default=None)
+    parser.add_argument("-m", "--mode", choices=["phone", "web", "file", "all"], help="Mode penyelidikan", default=None)
+    parser.add_argument("-M", "--modules", help="Daftar modul spesifik", default=None)
+    parser.add_argument("-S", "--scope", choices=["quick", "default", "deep", "full"], help="Cakupan penyelidikan", default="default")
     parser.add_argument("-T", "--timeout", type=int, help="Timeout koneksi HTTP dalam detik", default=None)
     parser.add_argument("-c", "--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
     parser.add_argument("-o", "--output", help="Path / nama file output JSON kustom", default=None)
@@ -516,42 +600,27 @@ async def main_async():
     
     if not target:
         orchestrator.print_banner()
-        print(f"{YELLOW}[+] PILIH DOMAIN PENYELIDIKAN:{RESET}")
-        print(f"  {CYAN}[1]{RESET} Phone Intelligence       (Nomor Telepon Global / ITU-T E.164)")
-        print(f"  {CYAN}[2]{RESET} Web & Tech Recon         (URL / Domain / WhatWeb Stack / WAF / DNS)")
-        print(f"  {CYAN}[3]{RESET} Media & File Forensics   (Berkas / Gambar / EXIF / Hashes / Stego)")
-        print(f"  {CYAN}[0]{RESET} Keluar (Exit)\n")
         
-        try:
-            choice = input(f"{YELLOW}[?]{RESET} Masukkan Pilihan [1-3 / 0]: ").strip()
-        except EOFError:
-            choice = "0"
-            
-        if choice in EXIT_KEYWORDS:
+        MENU_OPTIONS = [
+            "Phone Intelligence",
+            "Web & Tech Recon",
+            "Media & File Forensics",
+            "Keluar"
+        ]
+        
+        selected_idx = select_menu_interactive(MENU_OPTIONS)
+        
+        if selected_idx == 3 or selected_idx < 0:
             print("\n[*] Keluar dari PATRICT-OSINT.")
             sys.exit(0)
             
-        if choice == "1":
-            mode = "phone"
-            try:
-                target = input(f"\n{YELLOW}[?]{RESET} Masukkan Nomor Telepon Target (contoh: +6281234567890): ").strip()
-            except EOFError:
-                target = ""
-        elif choice == "2":
-            mode = "web"
-            try:
-                target = input(f"\n{YELLOW}[?]{RESET} Masukkan URL / Domain Target (contoh: https://example.com): ").strip()
-            except EOFError:
-                target = ""
-        elif choice == "3":
-            mode = "file"
-            try:
-                target = input(f"\n{YELLOW}[?]{RESET} Masukkan Path File Gambar/Media (contoh: download/foto.jpg): ").strip()
-            except EOFError:
-                target = ""
-        else:
-            print("\n[!] Pilihan tidak valid.")
-            sys.exit(1)
+        mode_map = {0: "phone", 1: "web", 2: "file"}
+        mode = mode_map.get(selected_idx, "phone")
+        
+        try:
+            target = input(f"\n{YELLOW}[?]{RESET} Masukkan Target: ").strip()
+        except EOFError:
+            target = ""
             
     if not target:
         print("\n[!] Error: Target tidak boleh kosong.")
@@ -570,7 +639,6 @@ async def main_async():
         digits = re.sub(r"\D", "", target)
         if not digits or len(digits) < 5:
             print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
-            print("    Contoh format yang didukung: +6281234567890 atau 081234567890")
             sys.exit(1)
 
         if target.startswith("08"):

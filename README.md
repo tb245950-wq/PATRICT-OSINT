@@ -212,41 +212,37 @@ osint
  |  __/   / ___ \| | |  _ < | | |___  | | |____|| |_| |___) | || |\  | | |  
  |_|     /_/   \_\_| |_| \_\___\____| |_|        \___/|____/___|_| \_| |_|  
 ===================================================================
-                        PATRICT-OSINT v2.0
+                        PATRICT-OSINT v2.2.0
 ===================================================================
 
 [+] PILIH DOMAIN PENYELIDIKAN:
-  [1] 📞 Phone Intelligence       (Nomor Telepon Global / ITU-T E.164)
-  [2] 🌐 Web & Tech Recon         (URL / Domain / Tech Stack / Network / Auth)
-  [3] 🖼️ Media & File Forensics   (Image EXIF / Steganografi / Hash / Metadata)
-  [0] 🚪 Keluar (Exit)
 
-[?] Masukkan Pilihan [1-3 / 0]: 
+  >  Phone Intelligence
+     Web & Tech Recon
+     Media & File Forensics
+     Keluar
 ```
+
+Navigasi menu dapat menggunakan **Page Up / Page Down**, **Arrow Up / Arrow Down**, atau tombol `j`/`k`, lalu tekan **Enter** untuk memilih domain penyelidikan.
 
 ---
 
-### 2. Mode Baris Perintah (Direct CLI / Auto-Detect)
+### 2. Mode Baris Perintah (Direct CLI / Scope Control)
 
-Anda dapat langsung memasukkan target pada perintah terminal, sistem akan **mendeteksi domain target secara otomatis**:
+Anda dapat langsung memasukkan target pada perintah terminal dengan berbagai opsi flag:
 
 ```bash
-# 📞 Penyelidikan Nomor Telepon (Auto-detect Phone)
+# Penyelidikan Nomor Telepon (Auto-detect Phone)
 osint +6281234567890
 
-# 🌐 Penyelidikan Web & Infrastruktur (Auto-detect Web)
-osint https://target-website.com
+# Penyelidikan Web & WhatWeb Fingerprint dengan Scope Mendalam
+osint -t https://target-website.com -m web -S full -T 15
 
-# 🖼️ Forensik Berkas Gambar / Media (Auto-detect File)
-osint /home/user/Downloads/foto_tersangka.jpg
-```
+# Forensik Berkas Gambar / Media
+osint -t /home/user/Downloads/foto_tersangka.jpg -m file
 
-Atau tentukan mode secara eksplisit menggunakan opsi `-m`:
-
-```bash
-osint https://example.com -m web
-osint bukti.png -m file
-osint +6281234567890 -m phone
+# Eksekusi Modul Spesifik & Simpan Output Kustom
+osint -t +6281234567890 -M phone_osint,whatsapp_osint -o hasil_wa.json
 ```
 
 ---
