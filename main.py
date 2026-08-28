@@ -47,7 +47,11 @@ class PATRICTOrchestrator:
         headers: Optional[List[str]] = None,
         cookie: Optional[str] = None,
         proxy: Optional[str] = None,
-        aggression: int = 1
+        aggression: int = 1,
+        max_threads: Optional[int] = None,
+        verbose: bool = False,
+        quiet: bool = False,
+        no_errors: bool = False
     ):
         if config_path is None:
             default_cfg = os.path.join(BASE_DIR, "config", "config.yaml")
@@ -61,9 +65,11 @@ class PATRICTOrchestrator:
 
         self.config_manager = ConfigManager(config_path)
         
-        # Override HTTP options dari CLI flags
+        # Override HTTP & runtime options dari CLI flags
         if timeout:
             self.config_manager.set("app.timeout", timeout)
+        if max_threads:
+            self.config_manager.set("app.max_concurrency", max_threads)
         if user_agent:
             self.config_manager.set("http.user_agent", user_agent)
         if cookie:
@@ -80,6 +86,9 @@ class PATRICTOrchestrator:
             
         self.aggression = aggression
         self.config_manager.set("web.aggression", aggression)
+        self.verbose = verbose
+        self.quiet = quiet
+        self.no_errors = no_errors
             
         self.output_dir = self.config_manager.get("app.output_dir", "./output")
         os.makedirs(self.output_dir, exist_ok=True)
@@ -117,7 +126,7 @@ class PATRICTOrchestrator:
 
     def list_plugins(self):
         """Menampilkan daftar seluruh plugin/modul yang tersedia."""
-        modules = self.plugin_loader.discover_and_load(target_type="all")
+        modules = self.plugin_loader.discover_and_load(target_type="all", verbose=False)
         print("\nAvailable Modules / Plugins in PATRICT-OSINT:\n")
         print(f"  {'MODULE ID':<22} {'DOMAIN':<8} {'VERSION':<8} {'DESCRIPTION'}")
         print(f"  {'-'*22} {'-'*8} {'-'*8} {'-'*45}")
@@ -285,6 +294,12 @@ class PATRICTOrchestrator:
                 if r_val:
                     print(f"  * {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
 
+        # Verbose Output (jika -v diaktifkan)
+        if self.verbose:
+            print(f"\n{YELLOW}[+] VERBOSE RAW SECURITY HEADERS:{RESET}")
+            for hk, hv in w_data.get("security_headers", {}).items():
+                print(f"  * {hk : <28}: {WHITE}{hv}{RESET}")
+
         print(f"{BLUE}{'='*67}{RESET}\n")
 
     def _print_file_terminal(self, target: str, results: Dict[str, Any]):
@@ -358,7 +373,7 @@ class PATRICTOrchestrator:
         save_html: bool = False,
         brief: bool = False
     ) -> Dict[str, Any]:
-        if show_banner and not brief:
+        if show_banner and not brief and not self.quiet:
             self.print_banner()
 
         type_labels = {
@@ -368,7 +383,7 @@ class PATRICTOrchestrator:
             "all": "All Domains"
         }
         
-        if not brief:
+        if not brief and not self.quiet:
             print(f"[*] Target Reconnaissance : {WHITE}{target}{RESET}")
             print(f"[*] Tipe Domain          : {CYAN}{type_labels.get(target_type, target_type.upper())}{RESET}")
             print(f"[*] Scope Penyelidikan   : {GREEN}{scope.upper()}{RESET}")
@@ -376,8 +391,8 @@ class PATRICTOrchestrator:
             print(f"[*] Memuat Modul Dinamis...")
         
         # 1. Dynamic Discovery & Loading Modul
-        modules = self.plugin_loader.discover_and_load(target_type=target_type, module_filter=module_filter, verbose=not brief)
-        if not brief:
+        modules = self.plugin_loader.discover_and_load(target_type=target_type, module_filter=module_filter, verbose=not (brief or self.quiet))
+        if not brief and not self.quiet:
             print(f"[*] Total {len(modules)} Modul Siap Dijalankan.\n")
         
         results: Dict[str, Any] = {
@@ -396,21 +411,21 @@ class PATRICTOrchestrator:
         
         # 2. Eksekusi Modul Secara Terstruktur
         for module in modules:
-            if not brief:
+            if not brief and not self.quiet:
                 print(f"  [>] Menjalankan: {module.name}...")
             try:
                 mod_result = await module.run(target, context=context)
                 results[module.module_id] = mod_result
                 context[module.module_id] = mod_result
             except Exception as e:
-                if not brief:
+                if not brief and not self.quiet and not self.no_errors:
                     print(f"  [!] Error pada modul {module.name}: {e}")
                 results[module.module_id] = module.error_response(str(e))
                 
         # Tutup async session setelah scanning selesai
         await self.async_client.close()
         
-        if not brief:
+        if not brief and not self.quiet:
             print(f"\n{GREEN}[+] Pemindaian Selesai.{RESET}")
         
         # 3. Cetak Hasil Lengkap Langsung di Layar Terminal
@@ -439,9 +454,11 @@ class PATRICTOrchestrator:
             try:
                 with open(cwd_json_path, "w", encoding="utf-8") as f:
                     json.dump(results, f, indent=2, ensure_ascii=False)
-                print(f"  {GREEN}[+] File JSON tersimpan di : {WHITE}{cwd_json_path}{RESET}")
+                if not self.quiet:
+                    print(f"  {GREEN}[+] File JSON tersimpan di : {WHITE}{cwd_json_path}{RESET}")
             except Exception as e:
-                print(f"  [!] Gagal menyimpan file JSON di {cwd_json_path}: {e}")
+                if not self.no_errors:
+                    print(f"  [!] Gagal menyimpan file JSON di {cwd_json_path}: {e}")
 
         # 5. Opsi Ekspor HTML jika diminta secara spesifik
         if save_html and not brief:
@@ -451,7 +468,7 @@ class PATRICTOrchestrator:
                 target_type=target_type
             )
             html_file = reports.get("html")
-            if html_file:
+            if html_file and not self.quiet:
                 print(f"  {GREEN}[+] Laporan HTML (Opsional): {WHITE}{html_file}{RESET}")
 
         return results
@@ -601,7 +618,7 @@ LOGGING:
   --no-json                     Do not save JSON report to disk.
 
 PERFORMANCE & STABILITY:
-  --max-threads, -t=NUM         Number of simultaneous async workers. Default: 25.
+  --max-threads=NUM             Number of simultaneous async workers. Default: 25.
 
 HELP & MISCELLANEOUS:
   --help, -h                    Complete usage help (this help screen).
@@ -645,6 +662,7 @@ async def main_async():
     )
     parser.add_argument("target_pos", nargs="?", help="Target penyelidikan", default=None)
     parser.add_argument("-t", "--target", help="Target penyelidikan", default=None)
+    parser.add_argument("-i", "--input-file", help="Baca daftar target dari file", default=None)
     parser.add_argument("-m", "--mode", choices=["phone", "web", "file", "all"], help="Mode penyelidikan", default=None)
     parser.add_argument("-M", "--modules", help="Daftar modul spesifik", default=None)
     parser.add_argument("-S", "--scope", choices=["quick", "default", "deep", "full"], help="Cakupan penyelidikan", default="default")
@@ -657,6 +675,10 @@ async def main_async():
     parser.add_argument("--url-suffix", help="Suffix ditambahkan ke URL target", default="")
     parser.add_argument("-b", "--brief", action="store_true", help="Output ringkas satu baris WhatWeb", default=False)
     parser.add_argument("-l", "--list-plugins", action="store_true", help="Tampilkan daftar plugin", default=False)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Tampilkan detail verbose", default=False)
+    parser.add_argument("-q", "--quiet", action="store_true", help="Sembunyikan log progress", default=False)
+    parser.add_argument("--no-errors", action="store_true", help="Sembunyikan pesan error", default=False)
+    parser.add_argument("--max-threads", type=int, help="Jumlah thread / konkurensi", default=None)
     parser.add_argument("-T", "--timeout", type=int, help="Timeout koneksi HTTP dalam detik", default=None)
     parser.add_argument("--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
     parser.add_argument("-o", "--output", help="Path / nama file output JSON kustom", default=None)
@@ -671,16 +693,36 @@ async def main_async():
         headers=args.header,
         cookie=args.cookie,
         proxy=args.proxy,
-        aggression=args.aggression
+        aggression=args.aggression,
+        max_threads=args.max_threads,
+        verbose=args.verbose,
+        quiet=args.quiet,
+        no_errors=args.no_errors
     )
 
     if args.list_plugins:
         orchestrator.list_plugins()
         sys.exit(0)
     
-    raw_target = args.target_pos or args.target
+    # Kumpulkan target
+    targets_to_scan = []
+    if args.input_file:
+        if os.path.exists(args.input_file):
+            with open(args.input_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    clean_line = line.strip()
+                    if clean_line and not clean_line.startswith("#"):
+                        targets_to_scan.append(clean_line)
+        else:
+            print(f"[!] Error: File '{args.input_file}' tidak ditemukan.")
+            sys.exit(1)
+    else:
+        raw_target = args.target_pos or args.target
+        if raw_target:
+            targets_to_scan.append(raw_target)
+
     mode = args.mode
-    is_interactive = not raw_target
+    is_interactive = len(targets_to_scan) == 0
     
     # Parse module filter jika ada
     module_filter = None
@@ -691,121 +733,138 @@ async def main_async():
     HELP_KEYWORDS = {"-help", "--help", "-h", "help", "?", "menu", "--h"}
     BACK_KEYWORDS = {"back", "kembali", "b"}
 
-    target = raw_target
-
-    while True:
-        if not target and is_interactive:
-            orchestrator.print_banner()
-            
-            MENU_OPTIONS = [
-                "Phone Intelligence",
-                "Web & Tech Recon",
-                "Media & File Forensics",
-                "Keluar"
-            ]
-            
-            selected_idx = select_menu_interactive(MENU_OPTIONS)
-            
-            if selected_idx == 3 or selected_idx < 0:
-                print("\n[*] Keluar dari PATRICT-OSINT.")
-                sys.exit(0)
-                
-            mode_map = {0: "phone", 1: "web", 2: "file"}
-            mode = mode_map.get(selected_idx, "phone")
-
+    if is_interactive:
+        target = None
         while True:
             if not target:
-                try:
-                    target = input(f"\n{YELLOW}[?]{RESET} Masukkan Target: ").strip()
-                except (EOFError, KeyboardInterrupt):
+                orchestrator.print_banner()
+                
+                MENU_OPTIONS = [
+                    "Phone Intelligence",
+                    "Web & Tech Recon",
+                    "Media & File Forensics",
+                    "Keluar"
+                ]
+                
+                selected_idx = select_menu_interactive(MENU_OPTIONS)
+                
+                if selected_idx == 3 or selected_idx < 0:
                     print("\n[*] Keluar dari PATRICT-OSINT.")
                     sys.exit(0)
                     
-            if not target:
-                print("\n[!] Error: Target tidak boleh kosong.")
-                continue
+                mode_map = {0: "phone", 1: "web", 2: "file"}
+                mode = mode_map.get(selected_idx, "phone")
 
-            # Periksa keyword bantuan
-            if target.lower() in HELP_KEYWORDS:
-                print_help_menu()
-                target = None
-                continue
+            while True:
+                if not target:
+                    try:
+                        target = input(f"\n{YELLOW}[?]{RESET} Masukkan Target: ").strip()
+                    except (EOFError, KeyboardInterrupt):
+                        print("\n[*] Keluar dari PATRICT-OSINT.")
+                        sys.exit(0)
+                        
+                if not target:
+                    print("\n[!] Error: Target tidak boleh kosong.")
+                    continue
 
-            # Periksa keyword kembali ke menu domain
-            if target.lower() in BACK_KEYWORDS:
-                target = None
+                # Periksa keyword bantuan
+                if target.lower() in HELP_KEYWORDS:
+                    print_help_menu()
+                    target = None
+                    continue
+
+                # Periksa keyword kembali ke menu domain
+                if target.lower() in BACK_KEYWORDS:
+                    target = None
+                    break
+
+                # Periksa keyword keluar
+                if target.lower() in EXIT_KEYWORDS:
+                    print("\n[*] Keluar dari PATRICT-OSINT.")
+                    sys.exit(0)
+
+                # Deteksi mode otomatis jika belum ditentukan
+                if not mode:
+                    mode = detect_target_type(target)
+
+                # Validasi dan normalisasi per mode
+                if mode == "phone":
+                    digits = re.sub(r"\D", "", target)
+                    if not digits or len(digits) < 5:
+                        print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
+                        target = None
+                        continue
+
+                    if target.startswith("08"):
+                        target = "+62" + target[1:]
+                    elif target.startswith("62") and not target.startswith("+"):
+                        target = "+" + target
+                    elif not target.startswith("+") and digits:
+                        target = "+" + digits
+                        
+                elif mode == "web":
+                    if args.url_prefix and not target.startswith(args.url_prefix):
+                        target = args.url_prefix + target
+                    if args.url_suffix and not target.endswith(args.url_suffix):
+                        target = target + args.url_suffix
+
+                    clean_host = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
+                    if clean_host.startswith("-") or ("." not in clean_host and clean_host not in ("localhost", "127.0.0.1")):
+                        print(f"\n[!] Error: Input '{target}' bukan format URL atau domain web yang valid.")
+                        target = None
+                        continue
+
+                    if not target.startswith("http://") and not target.startswith("https://"):
+                        target = "https://" + target
+                        
+                elif mode == "file":
+                    if not os.path.exists(target):
+                        print(f"\n[!] Error: File '{target}' tidak ditemukan di sistem.")
+                        target = None
+                        continue
+
+                # Input valid, keluar dari loop input
                 break
 
-            # Periksa keyword keluar
-            if target.lower() in EXIT_KEYWORDS:
-                print("\n[*] Keluar dari PATRICT-OSINT.")
-                sys.exit(0)
+            if target:
+                targets_to_scan.append(target)
+                break
 
-            # Deteksi mode otomatis jika belum ditentukan
-            if not mode:
-                mode = detect_target_type(target)
+    # Eksekusi scan untuk setiap target
+    for target in targets_to_scan:
+        current_mode = mode or detect_target_type(target)
+        
+        # Validasi per mode
+        if current_mode == "phone":
+            digits = re.sub(r"\D", "", target)
+            if target.startswith("08"):
+                target = "+62" + target[1:]
+            elif target.startswith("62") and not target.startswith("+"):
+                target = "+" + target
+            elif not target.startswith("+") and digits:
+                target = "+" + digits
+        elif current_mode == "web":
+            if args.url_prefix and not target.startswith(args.url_prefix):
+                target = args.url_prefix + target
+            if args.url_suffix and not target.endswith(args.url_suffix):
+                target = target + args.url_suffix
+            if not target.startswith("http://") and not target.startswith("https://"):
+                target = "https://" + target
 
-            # Validasi dan normalisasi per mode
-            if mode == "phone":
-                digits = re.sub(r"\D", "", target)
-                if not digits or len(digits) < 5:
-                    print(f"\n[!] Error: Input '{target}' bukan format nomor telepon yang valid.")
-                    target = None
-                    if not is_interactive:
-                        sys.exit(1)
-                    continue
-
-                if target.startswith("08"):
-                    target = "+62" + target[1:]
-                elif target.startswith("62") and not target.startswith("+"):
-                    target = "+" + target
-                elif not target.startswith("+") and digits:
-                    target = "+" + digits
-                    
-            elif mode == "web":
-                # Terapkan prefix / suffix jika diberikan
-                if args.url_prefix and not target.startswith(args.url_prefix):
-                    target = args.url_prefix + target
-                if args.url_suffix and not target.endswith(args.url_suffix):
-                    target = target + args.url_suffix
-
-                clean_host = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
-                if clean_host.startswith("-") or ("." not in clean_host and clean_host not in ("localhost", "127.0.0.1")):
-                    print(f"\n[!] Error: Input '{target}' bukan format URL atau domain web yang valid.")
-                    target = None
-                    if not is_interactive:
-                        sys.exit(1)
-                    continue
-
-                if not target.startswith("http://") and not target.startswith("https://"):
-                    target = "https://" + target
-                    
-            elif mode == "file":
-                if not os.path.exists(target):
-                    print(f"\n[!] Error: File '{target}' tidak ditemukan di sistem.")
-                    target = None
-                    if not is_interactive:
-                        sys.exit(1)
-                    continue
-
-            # Input valid, keluar dari loop input
-            break
-
-        if target:
-            break
-
-    print("")
-    await orchestrator.run(
-        target,
-        target_type=mode,
-        module_filter=module_filter,
-        scope=args.scope,
-        show_banner=False,
-        save_json=not args.no_json,
-        output_file=args.output,
-        save_html=args.html,
-        brief=args.brief
-    )
+        if not args.brief and not args.quiet:
+            print("")
+            
+        await orchestrator.run(
+            target,
+            target_type=current_mode,
+            module_filter=module_filter,
+            scope=args.scope,
+            show_banner=False,
+            save_json=not args.no_json,
+            output_file=args.output,
+            save_html=args.html,
+            brief=args.brief
+        )
 
 def main():
     try:
