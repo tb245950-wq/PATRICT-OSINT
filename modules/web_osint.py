@@ -346,16 +346,34 @@ class WebOSINT(BaseOSINTModule):
 
         return meta_info
 
-    async def _probe_interesting_endpoints(self, base_url: str) -> List[Dict[str, Any]]:
-        """Memeriksa keberadaan endpoint menarik (robots.txt, sitemap.xml, graphql, security.txt, swagger)"""
+    async def _probe_interesting_endpoints(self, base_url: str, aggression: int = 1) -> List[Dict[str, Any]]:
+        """Memeriksa keberadaan endpoint menarik berdasarkan level agresi WhatWeb (1=Stealth, 3=Aggressive, 4=Heavy)"""
         endpoints_to_check = [
             ("robots.txt", "/robots.txt"),
             ("Sitemap XML", "/sitemap.xml"),
-            ("Security TXT", "/.well-known/security.txt"),
-            ("GraphQL API", "/graphql"),
-            ("Swagger / OpenAPI", "/swagger-ui.html"),
-            ("API Docs", "/api-docs")
+            ("Security TXT", "/.well-known/security.txt")
         ]
+
+        if aggression >= 3:
+            endpoints_to_check.extend([
+                ("GraphQL API", "/graphql"),
+                ("Swagger / OpenAPI", "/swagger-ui.html"),
+                ("API Docs", "/api-docs"),
+                ("Git Repo", "/.git/HEAD"),
+                ("Env File", "/.env"),
+                ("WordPress Login", "/wp-login.php"),
+                ("WordPress XML-RPC", "/xmlrpc.php")
+            ])
+
+        if aggression >= 4:
+            endpoints_to_check.extend([
+                ("Git Config", "/.git/config"),
+                ("Env Example", "/.env.example"),
+                ("PHP Info", "/phpinfo.php"),
+                ("Spring Actuator", "/actuator/health"),
+                ("OpenID Config", "/.well-known/openid-configuration"),
+                ("WP REST Users", "/wp-json/wp/v2/users")
+            ])
 
         detected = []
         if not self.async_client:
@@ -429,6 +447,7 @@ class WebOSINT(BaseOSINTModule):
     async def run(self, target: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         url = self._normalize_url(target)
         domain = self._extract_domain(url)
+        aggression = (context or {}).get("aggression") or self.config.get("web.aggression", 1)
 
         results = {
             "target_url": url,
@@ -443,7 +462,8 @@ class WebOSINT(BaseOSINTModule):
             "tech_stack": {},
             "interesting_endpoints": [],
             "dns_records": {},
-            "server_geoip": {}
+            "server_geoip": {},
+            "whatweb_summary": ""
         }
 
         # 1. Resolusi DNS Domain
@@ -529,7 +549,31 @@ class WebOSINT(BaseOSINTModule):
         # 8. Tech Stack Fingerprinting (WhatWeb Style)
         results["tech_stack"] = self._detect_tech_stack(final_headers, html_content)
 
-        # 9. Probe Endpoint Menarik (robots.txt, sitemap.xml, GraphQL, dll)
-        results["interesting_endpoints"] = await self._probe_interesting_endpoints(results["final_url"])
+        # 9. Probe Endpoint Menarik (Berdasarkan Level Agresi)
+        results["interesting_endpoints"] = await self._probe_interesting_endpoints(results["final_url"], aggression=aggression)
+
+        # 10. Bangun WhatWeb Brief Line Summary
+        brief_parts = [f"{results['final_url']} [{results['final_status']} OK]"]
+        geo = results.get("server_geoip", {})
+        if geo.get("country"):
+            brief_parts.append(f"Country[{geo.get('country').upper()}][{geo.get('country')[:2].upper()}]")
+        if server_ip:
+            brief_parts.append(f"IP[{server_ip}]")
+        if results["page_metadata"].get("title"):
+            brief_parts.append(f"Title[{results['page_metadata'].get('title')}]")
+        if results["tech_stack"].get("web_servers"):
+            brief_parts.append(f"HTTPServer[{', '.join(results['tech_stack'].get('web_servers'))}]")
+        if results["tech_stack"].get("waf_and_security"):
+            brief_parts.append(f"WAF[{', '.join(results['tech_stack'].get('waf_and_security'))}]")
+        if results["tech_stack"].get("programming_languages"):
+            brief_parts.append(f"Language[{', '.join(results['tech_stack'].get('programming_languages'))}]")
+        if results["tech_stack"].get("backend_frameworks"):
+            brief_parts.append(f"Framework[{', '.join(results['tech_stack'].get('backend_frameworks'))}]")
+        if results["tech_stack"].get("cms_and_platforms"):
+            brief_parts.append(f"CMS[{', '.join(results['tech_stack'].get('cms_and_platforms'))}]")
+        if results["tech_stack"].get("frontend_libraries"):
+            brief_parts.append(f"JScript[{', '.join(results['tech_stack'].get('frontend_libraries'))}]")
+        results["whatweb_summary"] = ", ".join(brief_parts)
 
         return self.success_response(results, f"Pemindaian Web & Infrastruktur {domain} Berhasil.")
+

@@ -31,7 +31,12 @@ class AsyncHttpClient:
         self._session: Optional[aiohttp.ClientSession] = None
         
     def _get_headers(self, custom_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
-        ua = random.choice(self.USER_AGENTS) if self.rotate_ua else self.USER_AGENTS[0]
+        custom_ua = self.config.get("http.user_agent")
+        if custom_ua:
+            ua = custom_ua
+        else:
+            ua = random.choice(self.USER_AGENTS) if self.rotate_ua else self.USER_AGENTS[0]
+            
         headers = {
             "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -39,11 +44,23 @@ class AsyncHttpClient:
             "DNT": "1",
             "Connection": "keep-alive"
         }
+        
+        custom_cookie = self.config.get("http.cookie")
+        if custom_cookie:
+            headers["Cookie"] = custom_cookie
+            
+        cfg_headers = self.config.get("http.headers", {})
+        if isinstance(cfg_headers, dict):
+            headers.update(cfg_headers)
+            
         if custom_headers:
             headers.update(custom_headers)
         return headers
         
     def _get_proxy(self) -> Optional[str]:
+        cli_proxy = self.config.get("http.proxy")
+        if cli_proxy:
+            return cli_proxy
         if self.config.get("proxy.enabled", False):
             http_proxy = self.config.get("proxy.http_proxy", "")
             socks_proxy = self.config.get("proxy.socks5_proxy", "")
@@ -85,6 +102,19 @@ class AsyncHttpClient:
                     return resp.status, dict(resp.headers)
             except Exception:
                 return 0, {}
+                
+    async def options(self, url: str, headers: Optional[Dict[str, str]] = None, **kwargs) -> Tuple[int, str, Dict[str, str]]:
+        async with self.semaphore:
+            session = await self.get_session()
+            req_headers = self._get_headers(headers)
+            proxy = self._get_proxy()
+            
+            try:
+                async with session.options(url, headers=req_headers, proxy=proxy, allow_redirects=True, **kwargs) as resp:
+                    text = await resp.text(errors="ignore")
+                    return resp.status, text, dict(resp.headers)
+            except Exception as e:
+                return 0, str(e), {}
                 
     async def close(self):
         if self._session and not self._session.closed:

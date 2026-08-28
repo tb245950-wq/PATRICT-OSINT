@@ -39,7 +39,16 @@ class PATRICTOrchestrator:
     pencetakan hasil kaya langsung di terminal, dan ekspor JSON.
     """
     
-    def __init__(self, config_path: str = None, timeout: Optional[int] = None):
+    def __init__(
+        self,
+        config_path: str = None,
+        timeout: Optional[int] = None,
+        user_agent: Optional[str] = None,
+        headers: Optional[List[str]] = None,
+        cookie: Optional[str] = None,
+        proxy: Optional[str] = None,
+        aggression: int = 1
+    ):
         if config_path is None:
             default_cfg = os.path.join(BASE_DIR, "config", "config.yaml")
             if not os.path.exists(default_cfg):
@@ -52,9 +61,25 @@ class PATRICTOrchestrator:
 
         self.config_manager = ConfigManager(config_path)
         
-        # Override timeout jika diberikan via CLI flag -T
+        # Override HTTP options dari CLI flags
         if timeout:
             self.config_manager.set("app.timeout", timeout)
+        if user_agent:
+            self.config_manager.set("http.user_agent", user_agent)
+        if cookie:
+            self.config_manager.set("http.cookie", cookie)
+        if proxy:
+            self.config_manager.set("http.proxy", proxy)
+        if headers:
+            h_dict = {}
+            for h in headers:
+                if ":" in h:
+                    k, v = h.split(":", 1)
+                    h_dict[k.strip()] = v.strip()
+            self.config_manager.set("http.headers", h_dict)
+            
+        self.aggression = aggression
+        self.config_manager.set("web.aggression", aggression)
             
         self.output_dir = self.config_manager.get("app.output_dir", "./output")
         os.makedirs(self.output_dir, exist_ok=True)
@@ -89,6 +114,16 @@ class PATRICTOrchestrator:
 {BLUE}==================================================================={RESET}
 """
         print(banner)
+
+    def list_plugins(self):
+        """Menampilkan daftar seluruh plugin/modul yang tersedia."""
+        modules = self.plugin_loader.discover_and_load(target_type="all")
+        print("\nAvailable Modules / Plugins in PATRICT-OSINT:\n")
+        print(f"  {'MODULE ID':<22} {'DOMAIN':<8} {'VERSION':<8} {'DESCRIPTION'}")
+        print(f"  {'-'*22} {'-'*8} {'-'*8} {'-'*45}")
+        for m in modules:
+            print(f"  {m.module_id:<22} {m.target_type:<8} {m.version:<8} {m.name}")
+        print(f"\nTotal: {len(modules)} plugins loaded.\n")
 
     def _print_phone_terminal(self, target: str, results: Dict[str, Any]):
         p_data = results.get("phone_osint", {}).get("data", {})
@@ -153,8 +188,18 @@ class PATRICTOrchestrator:
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 
-    def _print_web_terminal(self, target: str, results: Dict[str, Any]):
+    def _print_web_terminal(self, target: str, results: Dict[str, Any], brief: bool = False):
         w_data = results.get("web_osint", {}).get("data", {})
+        
+        # Mode Brief satu baris ala WhatWeb
+        if brief:
+            summary = w_data.get("whatweb_summary")
+            if summary:
+                print(f"{summary}")
+            else:
+                print(f"{target} [{w_data.get('final_status', 200)} OK]")
+            return
+
         meta = w_data.get("page_metadata", {})
         geo = w_data.get("server_geoip", {})
         stack = w_data.get("tech_stack", {})
@@ -310,9 +355,10 @@ class PATRICTOrchestrator:
         show_banner: bool = True,
         save_json: bool = True,
         output_file: Optional[str] = None,
-        save_html: bool = False
+        save_html: bool = False,
+        brief: bool = False
     ) -> Dict[str, Any]:
-        if show_banner:
+        if show_banner and not brief:
             self.print_banner()
 
         type_labels = {
@@ -322,62 +368,68 @@ class PATRICTOrchestrator:
             "all": "All Domains"
         }
         
-        print(f"[*] Target Reconnaissance : {WHITE}{target}{RESET}")
-        print(f"[*] Tipe Domain          : {CYAN}{type_labels.get(target_type, target_type.upper())}{RESET}")
-        print(f"[*] Scope Penyelidikan   : {GREEN}{scope.upper()}{RESET}")
-        print(f"[*] Waktu Mulai          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-        print(f"[*] Memuat Modul Dinamis...")
+        if not brief:
+            print(f"[*] Target Reconnaissance : {WHITE}{target}{RESET}")
+            print(f"[*] Tipe Domain          : {CYAN}{type_labels.get(target_type, target_type.upper())}{RESET}")
+            print(f"[*] Scope Penyelidikan   : {GREEN}{scope.upper()}{RESET}")
+            print(f"[*] Waktu Mulai          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            print(f"[*] Memuat Modul Dinamis...")
         
         # 1. Dynamic Discovery & Loading Modul
-        modules = self.plugin_loader.discover_and_load(target_type=target_type, module_filter=module_filter)
-        print(f"[*] Total {len(modules)} Modul Siap Dijalankan.\n")
+        modules = self.plugin_loader.discover_and_load(target_type=target_type, module_filter=module_filter, verbose=not brief)
+        if not brief:
+            print(f"[*] Total {len(modules)} Modul Siap Dijalankan.\n")
         
         results: Dict[str, Any] = {
             "meta": {
                 "target": target,
                 "target_type": target_type,
                 "scope": scope,
+                "aggression": self.aggression,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "version": VERSION,
                 "total_modules": len(modules)
             }
         }
         
-        context: Dict[str, Any] = {}
+        context: Dict[str, Any] = {"aggression": self.aggression, "scope": scope}
         
         # 2. Eksekusi Modul Secara Terstruktur
         for module in modules:
-            print(f"  [>] Menjalankan: {module.name}...")
+            if not brief:
+                print(f"  [>] Menjalankan: {module.name}...")
             try:
                 mod_result = await module.run(target, context=context)
                 results[module.module_id] = mod_result
                 context[module.module_id] = mod_result
             except Exception as e:
-                print(f"  [!] Error pada modul {module.name}: {e}")
+                if not brief:
+                    print(f"  [!] Error pada modul {module.name}: {e}")
                 results[module.module_id] = module.error_response(str(e))
                 
         # Tutup async session setelah scanning selesai
         await self.async_client.close()
         
-        print(f"\n{GREEN}[+] Pemindaian Selesai.{RESET}")
+        if not brief:
+            print(f"\n{GREEN}[+] Pemindaian Selesai.{RESET}")
         
         # 3. Cetak Hasil Lengkap Langsung di Layar Terminal
         if target_type == "phone":
             self._print_phone_terminal(target, results)
         elif target_type == "web":
-            self._print_web_terminal(target, results)
+            self._print_web_terminal(target, results, brief=brief)
         elif target_type == "file":
             self._print_file_terminal(target, results)
         else:
             if "phone_osint" in results or "caller_id_osint" in results:
                 self._print_phone_terminal(target, results)
             if "web_osint" in results:
-                self._print_web_terminal(target, results)
+                self._print_web_terminal(target, results, brief=brief)
             if "file_forensics" in results:
                 self._print_file_terminal(target, results)
 
         # 4. Simpan File JSON di Direktori Tempat Terminal Aktif Dijalankan
-        if save_json:
+        if save_json and not brief:
             if output_file:
                 cwd_json_path = os.path.abspath(output_file)
             else:
@@ -392,7 +444,7 @@ class PATRICTOrchestrator:
                 print(f"  [!] Gagal menyimpan file JSON di {cwd_json_path}: {e}")
 
         # 5. Opsi Ekspor HTML jika diminta secara spesifik
-        if save_html:
+        if save_html and not brief:
             reports = self.report_generator.generate_all_reports(
                 target=target,
                 full_data=results,
@@ -502,75 +554,87 @@ def select_menu_interactive(options: List[str]) -> int:
     return selected_idx
 
 def print_help_menu():
-    help_text = rf"""
-{BLUE}==================================================================={RESET}
-{BLUE}  ____       _  _____ ____  ___ ____ _____ {RESET}       {WHITE} ___  ____ ___ _   _ _____ {RESET}
-{BLUE} |  _ \     / \|_   _|  _ \|_ _/ ___|_   _|{RESET}      {WHITE}/ _ \/ ___|_ _| \ | |_   _|{RESET}
-{BLUE} | |_) |   / _ \ | | | |_) || | |     | |  {CYAN}____ {WHITE}| | | \___ \| ||  \| | | |  {RESET}
-{BLUE} |  __/   / ___ \| | |  _ < | | |___  | | {CYAN}|____|{WHITE}| |_| |___) | || |\  | | |  {RESET}
-{BLUE} |_|     /_/   \_\_| |_| \_\___\____| |_|  {RESET}      {WHITE}\___/|____/___|_| \_| |_|  {RESET}
-{BLUE}==================================================================={RESET}
-                        {BLUE}PATRICT{WHITE}-{CYAN}OSINT {WHITE}v{VERSION}{RESET}
-{BLUE}==================================================================={RESET}
+    help_text = """
+Usage: osint [options] <target>
 
-{YELLOW}PENGGUNAAN:{RESET}
-  osint [target] [opsi]
-  osint -t <target> -m <mode> [opsi]
+TARGET SELECTION:
+  <TARGETs>                     Enter Phone (+62xxx), URL (https://xxx), Domain,
+                                IP address, or Image/File (/path/to/img.jpg).
+  --input-file=FILE, -i         Read targets from a file.
 
-{YELLOW}DESKRIPSI:{RESET}
-  PATRICT-OSINT adalah framework intelijen sumber terbuka (OSINT) dan forensik
-  digital modular generasi baru untuk investigasi multi-domain profesional.
+TARGET MODIFICATION:
+  --url-prefix=PREFIX           Add a prefix to target URLs (e.g. https://).
+  --url-suffix=SUFFIX           Add a suffix to target URLs (e.g. /robots.txt).
+  --mode, -m=MODE               Force domain mode: phone, web, file, all.
 
-{YELLOW}DOMAIN TARGET:{RESET}
-  {CYAN}phone{RESET}       Penyelidikan nomor telepon internasional, HLR, operator dan sosmed
-  {CYAN}web{RESET}         Reconnaissance web, WhatWeb tech stack, WAF, redirect dan DNS
-  {CYAN}file{RESET}        Forensik media/gambar, EXIF, GPS coordinates, hash dan steganografi
-  {CYAN}all{RESET}         Jalankan seluruh modul tanpa batasan domain
+AGGRESSION:
+The aggression level controls the trade-off between speed/stealth and reliability.
+  --aggression, -a=LEVEL        Set the aggression level (1, 3, 4). Default: 1.
+  1. Stealthy                   Makes minimal HTTP requests and follows redirects.
+  3. Aggressive                 Probes common endpoints (robots, sitemap, .git, .env, graphql, wp).
+  4. Heavy                      Deep probing with all sensitive security paths and CMS signatures.
 
-{YELLOW}OPSI / FLAGS:{RESET}
-  {GREEN}-t, --target <str>{RESET}        Target input (Nomor Telepon, URL Web, atau Path Berkas)
-  {GREEN}-m, --mode <mode>{RESET}         Domain mode: phone, web, file, all (Default: auto-detect)
-  {GREEN}-M, --modules <list>{RESET}      Pilih modul spesifik (contoh: -M web_osint atau -M phone_osint,social_osint)
-  {GREEN}-S, --scope <level>{RESET}       Cakupan pemindaian: quick, default, deep, full (Default: default)
-  {GREEN}-T, --timeout <int>{RESET}       Batas waktu koneksi HTTP dalam detik (Default: 10)
-  {GREEN}-c, --config <path>{RESET}       Path ke file konfigurasi YAML kustom
-  {GREEN}-o, --output <path>{RESET}       Kustom path / nama file penyimpanan JSON
-      {GREEN}--html{RESET}                Buat file laporan HTML interaktif di folder output/
-      {GREEN}--no-json{RESET}             Jangan simpan file laporan JSON ke disk
-  {GREEN}-v, --version{RESET}             Tampilkan informasi versi framework
-  {GREEN}-h, --help{RESET}                Tampilkan menu bantuan lengkap ini
+HTTP OPTIONS:
+  --user-agent, -U=AGENT        Identify as AGENT instead of default randomized browser UA.
+  --header, -H=HEADER           Add an HTTP header. eg "Authorization: Bearer token".
+  --cookie, -c=COOKIES          Use custom cookies, e.g. 'name=value; session=xyz'.
+  --timeout, -T=SECONDS         Connection timeout in seconds. Default: 10.
 
-{YELLOW}PROFIL CAKUPAN (SCOPE):{RESET}
-  {WHITE}quick{RESET}       Pemindaian cepat: validasi dasar, header, dan metadata inti.
-  {WHITE}default{RESET}     Pemindaian standar: seluruh modul aktif dalam domain target.
-  {WHITE}deep{RESET}        Pemindaian mendalam: probe endpoint, permutasi email & reverse DNS.
-  {WHITE}full{RESET}        Pemindaian penuh: aktifkan seluruh modul & dorking agresif.
+PROXY:
+  --proxy=URL                   Set proxy (e.g. http://127.0.0.1:8080 or socks5://127.0.0.1:9050).
 
-{YELLOW}CONTOH PENGGUNAAN:{RESET}
-  # Penyelidikan Nomor Telepon
+PLUGINS & MODULES:
+  --list-plugins, -l            List all available OSINT and WhatWeb plugins.
+  --modules, -M=LIST            Select modules/plugins. LIST is a comma-delimited set
+                                (e.g. -M web_osint or -M phone_osint,whatsapp_osint).
+  --scope, -S=LEVEL             Set scan scope: quick, default, deep, full. Default: default.
+
+OUTPUT:
+  --verbose, -v                 Verbose output with detailed breakdown of all plugins and signatures.
+  --brief, -b                   Display brief WhatWeb one-line summary output.
+  --quiet, -q                   Do not display module loading progress to STDOUT.
+  --no-errors                   Suppress error messages.
+
+LOGGING:
+  --output, -o=FILE             Save output to specified JSON file.
+  --html                        Generate interactive HTML dashboard in output/ directory.
+  --no-json                     Do not save JSON report to disk.
+
+PERFORMANCE & STABILITY:
+  --max-threads, -t=NUM         Number of simultaneous async workers. Default: 25.
+
+HELP & MISCELLANEOUS:
+  --help, -h                    Complete usage help (this help screen).
+  --version, -V                 Display framework version information.
+
+EXAMPLE USAGE:
+* Standard phone reconnaissance:
   osint +6281234567890
-  osint -t +6281234567890 -m phone -S deep
 
-  # Reconnaissance Web & Tech Stack ala WhatWeb
-  osint https://target.com
-  osint -t https://target.com -m web -T 15 -S full
+* WhatWeb-style web reconnaissance:
+  osint https://example.com
 
-  # Analisis Forensik Gambar & Steganografi
-  osint /path/to/foto.jpg
-  osint -t /path/to/foto.jpg -m file
+* Aggressive web scan with custom User-Agent and headers:
+  osint -t https://example.com -m web -a 3 -U "CustomScanner/1.0" -H "X-Forwarded-For: 127.0.0.1"
 
-  # Eksekusi Modul Spesifik & Output Kustom
-  osint -t +6281234567890 -M phone_osint,whatsapp_osint -o hasil_wa.json
+* Brief one-line scan for multiple domains:
+  osint https://target1.com --brief
+
+* Forensic analysis of an image:
+  osint /path/to/evidence.jpg -m file
+
+* Phone reconnaissance running only WhatsApp and Social modules:
+  osint -t +6281234567890 -M phone_osint,whatsapp_osint -o report.json
 """
     print(help_text)
 
 async def main_async():
     # Periksa -h atau --help atau -help
-    if any(arg in sys.argv for arg in ["-h", "--help", "-help", "help"]):
+    if any(arg in sys.argv for arg in ["-h", "--help", "-help", "help", "--short-help"]):
         print_help_menu()
         sys.exit(0)
 
-    if any(arg in sys.argv for arg in ["-v", "--version", "-version", "version"]):
+    if any(arg in sys.argv for arg in ["-v", "--version", "-version", "version", "-V"]):
         print(f"PATRICT-OSINT Framework v{VERSION}")
         sys.exit(0)
 
@@ -584,14 +648,35 @@ async def main_async():
     parser.add_argument("-m", "--mode", choices=["phone", "web", "file", "all"], help="Mode penyelidikan", default=None)
     parser.add_argument("-M", "--modules", help="Daftar modul spesifik", default=None)
     parser.add_argument("-S", "--scope", choices=["quick", "default", "deep", "full"], help="Cakupan penyelidikan", default="default")
+    parser.add_argument("-a", "--aggression", type=int, choices=[1, 3, 4], help="Level agresi WhatWeb (1, 3, 4)", default=1)
+    parser.add_argument("-U", "--user-agent", help="Custom User-Agent string", default=None)
+    parser.add_argument("-H", "--header", action="append", help="Custom HTTP Header (bisa multiple)", default=[])
+    parser.add_argument("-c", "--cookie", help="Custom cookie string", default=None)
+    parser.add_argument("--proxy", help="Proxy URL", default=None)
+    parser.add_argument("--url-prefix", help="Prefix ditambahkan ke URL target", default="")
+    parser.add_argument("--url-suffix", help="Suffix ditambahkan ke URL target", default="")
+    parser.add_argument("-b", "--brief", action="store_true", help="Output ringkas satu baris WhatWeb", default=False)
+    parser.add_argument("-l", "--list-plugins", action="store_true", help="Tampilkan daftar plugin", default=False)
     parser.add_argument("-T", "--timeout", type=int, help="Timeout koneksi HTTP dalam detik", default=None)
-    parser.add_argument("-c", "--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
+    parser.add_argument("--config", help="Path ke file konfigurasi YAML", default="config/config.yaml")
     parser.add_argument("-o", "--output", help="Path / nama file output JSON kustom", default=None)
     parser.add_argument("--html", action="store_true", help="Ekspor laporan HTML ke folder output/", default=False)
     parser.add_argument("--no-json", action="store_true", help="Jangan simpan file JSON di direktori aktif", default=False)
     args = parser.parse_args()
     
-    orchestrator = PATRICTOrchestrator(config_path=args.config, timeout=args.timeout)
+    orchestrator = PATRICTOrchestrator(
+        config_path=args.config,
+        timeout=args.timeout,
+        user_agent=args.user_agent,
+        headers=args.header,
+        cookie=args.cookie,
+        proxy=args.proxy,
+        aggression=args.aggression
+    )
+
+    if args.list_plugins:
+        orchestrator.list_plugins()
+        sys.exit(0)
     
     raw_target = args.target_pos or args.target
     mode = args.mode
@@ -678,6 +763,12 @@ async def main_async():
                     target = "+" + digits
                     
             elif mode == "web":
+                # Terapkan prefix / suffix jika diberikan
+                if args.url_prefix and not target.startswith(args.url_prefix):
+                    target = args.url_prefix + target
+                if args.url_suffix and not target.endswith(args.url_suffix):
+                    target = target + args.url_suffix
+
                 clean_host = target.replace("http://", "").replace("https://", "").split("/")[0].split(":")[0]
                 if clean_host.startswith("-") or ("." not in clean_host and clean_host not in ("localhost", "127.0.0.1")):
                     print(f"\n[!] Error: Input '{target}' bukan format URL atau domain web yang valid.")
@@ -712,7 +803,8 @@ async def main_async():
         show_banner=False,
         save_json=not args.no_json,
         output_file=args.output,
-        save_html=args.html
+        save_html=args.html,
+        brief=args.brief
     )
 
 def main():

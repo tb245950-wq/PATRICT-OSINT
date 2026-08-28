@@ -19,7 +19,7 @@ class PluginLoader:
         self.async_client = async_client
         self.loaded_modules: List[BaseOSINTModule] = []
         
-    def discover_and_load(self, target_type: Optional[str] = None, module_filter: Optional[List[str]] = None) -> List[BaseOSINTModule]:
+    def discover_and_load(self, target_type: Optional[str] = None, module_filter: Optional[List[str]] = None, verbose: bool = True) -> List[BaseOSINTModule]:
         self.loaded_modules = []
         
         target_dir = self.modules_dir
@@ -30,7 +30,8 @@ class PluginLoader:
                 target_dir = candidate
 
         if not os.path.exists(target_dir):
-            print(f"[!] Warning: Direktori modul '{target_dir}' tidak ditemukan.")
+            if verbose:
+                print(f"[!] Warning: Direktori modul '{target_dir}' tidak ditemukan.")
             return []
             
         abs_modules_dir = os.path.abspath(target_dir)
@@ -70,11 +71,14 @@ class PluginLoader:
                                     
                                 if is_enabled:
                                     self.loaded_modules.append(module_instance)
-                                    print(f"  [+] Loaded Module: {module_instance.name} (v{module_instance.version})")
+                                    if verbose:
+                                        print(f"  [+] Loaded Module: {module_instance.name} (v{module_instance.version})")
                                 else:
-                                    print(f"  [-] Disabled Module: {module_instance.name} (via config)")
+                                    if verbose:
+                                        print(f"  [-] Disabled Module: {module_instance.name} (via config)")
                 except Exception as e:
-                    print(f"  [!] Error loading module {file}: {e}")
+                    if verbose:
+                        print(f"  [!] Error loading module {file}: {e}")
                     
         # Urutkan berdasarkan prioritas (angka lebih kecil = prioritas lebih tinggi)
         self.loaded_modules.sort(key=lambda m: getattr(m, 'priority', 10))
