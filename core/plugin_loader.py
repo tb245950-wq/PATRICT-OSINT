@@ -3,7 +3,7 @@ import sys
 import inspect
 import importlib
 import importlib.util
-from typing import List, Dict, Any, Type
+from typing import List, Dict, Any, Type, Optional
 from core.base_module import BaseOSINTModule
 
 class PluginLoader:
@@ -19,7 +19,7 @@ class PluginLoader:
         self.async_client = async_client
         self.loaded_modules: List[BaseOSINTModule] = []
         
-    def discover_and_load(self) -> List[BaseOSINTModule]:
+    def discover_and_load(self, target_type: Optional[str] = None) -> List[BaseOSINTModule]:
         self.loaded_modules = []
         
         target_dir = self.modules_dir
@@ -51,6 +51,10 @@ class PluginLoader:
                         # Cari class turunan BaseOSINTModule di dalam file
                         for _, cls in inspect.getmembers(py_module, inspect.isclass):
                             if issubclass(cls, BaseOSINTModule) and cls is not BaseOSINTModule:
+                                mod_type = getattr(cls, 'target_type', 'phone')
+                                if target_type and target_type != 'all' and mod_type not in (target_type, 'all', 'any'):
+                                    continue
+                                    
                                 module_instance = cls(config=self.config, async_client=self.async_client)
                                 
                                 # Periksa apakah modul diaktifkan di config

@@ -15,6 +15,7 @@ class BaseOSINTModule(abc.ABC):
     author: str = "PATRICT Core Team"
     enabled: bool = True
     priority: int = 10  # Modul dengan prioritas lebih rendah dieksekusi lebih awal
+    target_type: str = "phone"  # "phone", "web", "file", atau "all"
     
     def __init__(self, config: Optional[Dict[str, Any]] = None, async_client: Optional[Any] = None):
         self.config = config or {}
