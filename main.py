@@ -461,58 +461,137 @@ class PATRICTOrchestrator:
         f_data = results.get("file_forensics", {}).get("data", {})
         f_info = f_data.get("file_info", {})
         hashes = f_data.get("cryptographic_hashes", {})
+        entropy = f_data.get("shannon_entropy", {})
         magic = f_data.get("magic_bytes_inspection", {})
         exif = f_data.get("exif_metadata", {})
-        stego = f_data.get("steganography_and_integrity", {})
+        pdf = f_data.get("pdf_forensics", {})
+        office = f_data.get("office_forensics", {})
+        lsb = f_data.get("lsb_steganography", {})
+        carving = f_data.get("binary_carving_and_payload", {})
 
         print(f"\n{BLUE}{'='*67}{RESET}")
-        print(f"             {WHITE}{BOLD}HASIL FORENSIK MEDIA & BERKAS{RESET}")
+        print(f"             {WHITE}{BOLD}HASIL FORENSIK MEDIA, DOKUMEN & BERKAS{RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
         print(f"  {CYAN}Nama Berkas{RESET}         : {WHITE}{f_info.get('file_name', os.path.basename(target))}{RESET}")
         print(f"  {CYAN}Lokasi Path{RESET}         : {WHITE}{f_info.get('file_path', target)}{RESET}")
         print(f"  {CYAN}Ukuran Berkas{RESET}       : {WHITE}{f_info.get('file_size_formatted', 'N/A')} ({f_info.get('file_size_bytes', 0)} bytes){RESET}")
-        print(f"  {CYAN}Ekstensi File{RESET}       : {WHITE}{f_info.get('file_extension', 'N/A')}{RESET}")
+        print(f"  {CYAN}Ekstensi Berkas{RESET}     : {WHITE}{f_info.get('file_extension', 'N/A')}{RESET}")
 
-        # Hashes
-        print(f"\n{YELLOW}[+] KRIPTOGRAFI & HASH INTEGRITAS:{RESET}")
+        # 1. Kriptografi & Shannon Entropy
+        print(f"\n{YELLOW}[+] KRIPTOGRAFI & SHANNON ENTROPY INTEGRITAS:{RESET}")
         print(f"  * MD5               : {WHITE}{hashes.get('md5', 'N/A')}{RESET}")
         print(f"  * SHA-1             : {WHITE}{hashes.get('sha1', 'N/A')}{RESET}")
         print(f"  * SHA-256           : {WHITE}{hashes.get('sha256', 'N/A')}{RESET}")
+        
+        ent_val = entropy.get("entropy", 0.0)
+        ent_rating = entropy.get("rating", "UNKNOWN")
+        ent_color = RED if ent_rating == "VERY HIGH" else (YELLOW if ent_rating == "HIGH" else GREEN)
+        print(f"  * Shannon Entropy   : {ent_color}{ent_val} bits/byte [{ent_rating}]{RESET}")
+        print(f"  * Analisis Entropy  : {WHITE}{entropy.get('description', 'N/A')}{RESET}")
 
-        # Magic Bytes
-        print(f"\n{YELLOW}[+] VERIFIKASI MAGIC BYTES:{RESET}")
+        # 2. Verifikasi Magic Bytes & Anti-Spoofing
+        print(f"\n{YELLOW}[+] VERIFIKASI MAGIC BYTES & ANTI-SPOOFING:{RESET}")
         is_spoofed = magic.get("is_extension_spoofed", False)
         spoof_badge = f"{RED}[PERINGATAN] Ekstensi dipalsukan / Spoofed!{RESET}" if is_spoofed else f"{GREEN}Valid (Sesuai signature) [OK]{RESET}"
-        print(f"  * Tipe File Asli    : {WHITE}{magic.get('detected_file_type', 'Unknown')}{RESET}")
+        print(f"  * Tipe Berkas Asli  : {WHITE}{magic.get('detected_file_type', 'Unknown')}{RESET}")
         print(f"  * Status Ekstensi   : {spoof_badge}")
 
-        # EXIF
-        print(f"\n{YELLOW}[+] METADATA KAMERA & EXIF:{RESET}")
+        # 3. EXIF Kamera, Optik, & GPS Presisi
         if exif.get("has_exif"):
+            print(f"\n{YELLOW}[+] METADATA KAMERA, OPTIK & PENGAMBILAN GAMBAR:{RESET}")
             camera = f"{exif.get('camera_make', '')} {exif.get('camera_model', '')}".strip()
             print(f"  * Perangkat/Kamera  : {WHITE}{camera or 'N/A'}{RESET}")
-            print(f"  * Software Editor   : {WHITE}{exif.get('software', 'N/A')}{RESET}")
-            print(f"  * Waktu Pemotretan  : {WHITE}{exif.get('datetime_original', 'N/A')}{RESET}")
+            if exif.get("lens_model"):
+                print(f"  * Model Lensa       : {WHITE}{exif.get('lens_model')}{RESET}")
+            if exif.get("software"):
+                print(f"  * Software Editor   : {WHITE}{exif.get('software')}{RESET}")
+            if exif.get("artist") or exif.get("copyright"):
+                print(f"  * Author / Hak Cipta: {WHITE}{exif.get('artist') or 'N/A'} (© {exif.get('copyright') or 'N/A'}){RESET}")
+            if exif.get("user_comment"):
+                print(f"  * User Comment      : {CYAN}{exif.get('user_comment')}{RESET}")
+            if exif.get("datetime_original"):
+                print(f"  * Waktu Pemotretan  : {WHITE}{exif.get('datetime_original')}{RESET}")
+            
+            # Exposure parameters
+            exp_parts = []
+            if exif.get("exposure_time"):
+                exp_parts.append(f"Exp: {exif.get('exposure_time')}")
+            if exif.get("f_number"):
+                exp_parts.append(f"Aperture: {exif.get('f_number')}")
+            if exif.get("iso_speed"):
+                exp_parts.append(f"ISO: {exif.get('iso_speed')}")
+            if exif.get("focal_length"):
+                exp_parts.append(f"Focal: {exif.get('focal_length')}")
+            if exp_parts:
+                print(f"  * Parameter Optik   : {WHITE}{' | '.join(exp_parts)}{RESET}")
+            if exif.get("flash"):
+                print(f"  * Status Flash      : {WHITE}{exif.get('flash')}{RESET}")
+
+            # GPS Coordinates
             gps = exif.get("gps_coordinates")
             if gps:
-                print(f"  * Koordinat GPS     : {GREEN}Lat: {gps.get('latitude')}, Lon: {gps.get('longitude')}{RESET}")
+                print(f"\n  {GREEN}[!] DATA GEOLOKASI GPS TERDETEKSI:{RESET}")
+                print(f"  * Desimal Koordinat : {GREEN}Lat: {gps.get('latitude')}, Lon: {gps.get('longitude')}{RESET}")
+                if gps.get("dms_formatted"):
+                    print(f"  * Format DMS        : {WHITE}{gps.get('dms_formatted')}{RESET}")
+                if gps.get("altitude"):
+                    print(f"  * Ketinggian/Alt    : {WHITE}{gps.get('altitude')}{RESET}")
                 print(f"  * Google Maps URL   : {CYAN}{gps.get('google_maps_url')}{RESET}")
+                print(f"  * OpenStreetMap URL : {CYAN}{gps.get('openstreetmap_url')}{RESET}")
+
+        # 4. Dokumen PDF Forensics (jika target PDF)
+        if pdf.get("is_pdf"):
+            print(f"\n{YELLOW}[+] METADATA DOKUMEN PDF & AUDIT KEAMANAN:{RESET}")
+            print(f"  * Format / Versi    : {WHITE}{pdf.get('pdf_version', 'PDF')}{RESET}")
+            print(f"  * Judul Dokumen     : {WHITE}{pdf.get('title') or 'N/A'}{RESET}")
+            print(f"  * Penulis / Author  : {WHITE}{pdf.get('author') or 'N/A'}{RESET}")
+            print(f"  * Pembuat / Creator : {WHITE}{pdf.get('creator') or 'N/A'} (Producer: {pdf.get('producer') or 'N/A'}){RESET}")
+            print(f"  * Waktu Dibuat      : {WHITE}{pdf.get('creation_date') or 'N/A'}{RESET}")
+            print(f"  * Total Halaman     : {WHITE}{pdf.get('page_count', 0)} Halaman{RESET}")
+            enc_status = f"{RED}Terenkripsi (Password Protected){RESET}" if pdf.get("is_encrypted") else f"{GREEN}Tidak Terenkripsi [OK]{RESET}"
+            print(f"  * Status Enkripsi   : {enc_status}")
+            if pdf.get("suspicious_actions"):
+                print(f"  * Temuan Keamanan   : {RED}{BOLD}{' | '.join(pdf.get('suspicious_actions'))}{RESET}")
+
+        # 5. Dokumen Office Forensics (.docx, .xlsx, .pptx)
+        if office.get("is_office_doc"):
+            print(f"\n{YELLOW}[+] METADATA DOKUMEN MICROSOFT OFFICE & AUDIT MACRO:{RESET}")
+            print(f"  * Tipe Dokumen      : {WHITE}{office.get('doc_type')}{RESET}")
+            print(f"  * Author / Creator  : {WHITE}{office.get('creator') or 'N/A'}{RESET}")
+            print(f"  * Terakhir Diubah   : {WHITE}{office.get('last_modified_by') or 'N/A'}{RESET}")
+            print(f"  * Revisi Ke         : {WHITE}{office.get('revision') or '1'}{RESET}")
+            print(f"  * Aplikasi Pembuat  : {WHITE}{office.get('application') or 'Office'} (v{office.get('app_version') or 'N/A'}){RESET}")
+            if office.get("total_editing_time_minutes"):
+                print(f"  * Total Waktu Edit  : {WHITE}{office.get('total_editing_time_minutes')}{RESET}")
+            macro_status = f"{RED}{BOLD}[PERINGATAN] Terdeteksi VBA Macros (Potensi Payload Malware!){RESET}" if office.get("has_vba_macros") else f"{GREEN}Bersih (Tidak ada VBA Macros) [OK]{RESET}"
+            print(f"  * Status VBA Macros : {macro_status}")
+
+        # 6. LSB Steganography Probing
+        if lsb.get("lsb_probed"):
+            print(f"\n{YELLOW}[+] LEAST SIGNIFICANT BIT (LSB) STEGANOGRAPHY PROBING:{RESET}")
+            if lsb.get("suspicious_stego_detected"):
+                print(f"  * Status LSB        : {RED}{BOLD}[PERINGATAN] Terdeteksi Anomali / Signature Tersembunyi pada LSB!{RESET}")
+                if lsb.get("detected_signatures"):
+                    print(f"  * Signature LSB     : {YELLOW}{', '.join(lsb.get('detected_signatures'))}{RESET}")
+                if lsb.get("recovered_preview"):
+                    print(f"  * Preview LSB Data  : {CYAN}{lsb.get('recovered_preview')}{RESET}")
+            else:
+                print(f"  * Status LSB        : {GREEN}Bersih (Tidak terdeteksi anomali teks/signature pada LSB) [OK]{RESET}")
+            print(f"  * Rasio Karakter    : {WHITE}{lsb.get('printable_ascii_ratio', 0.0) * 100:.1f}% Printable ASCII Characters{RESET}")
+
+        # 7. Deep Binary Carving & Trailing Payload
+        print(f"\n{YELLOW}[+] DEEP BINARY CARVING & TRAILING PAYLOAD EXTRACTION:{RESET}")
+        if carving.get("has_trailing_payload"):
+            print(f"  * Status Trailing   : {RED}{BOLD}[ALERT] DITEMUKAN {carving.get('trailing_size_formatted')} TRAILING DATA SETELAH EOF!{RESET}")
+            print(f"  * Tipe Payload      : {YELLOW}{carving.get('detected_payload_type')}{RESET}")
+            print(f"  * Entropy Payload   : {WHITE}{carving.get('trailing_entropy')} bits/byte ({carving.get('trailing_entropy_rating')}){RESET}")
+            if carving.get("carved_file_path"):
+                print(f"  * Hasil Carve File  : {GREEN}{BOLD}{carving.get('carved_file_path')}{RESET}")
+                print(f"  * Hash MD5 Carved   : {WHITE}{carving.get('carved_file_md5')}{RESET}")
+            if carving.get("interesting_strings"):
+                print(f"  * String Payload    : {CYAN}{', '.join(carving.get('interesting_strings')[:4])}{RESET}")
         else:
-            print(f"  * {WHITE}Tidak ditemukan metadata EXIF pada berkas ini.{RESET}")
-
-        # Steganography & Appended Data
-        print(f"\n{YELLOW}[+] DETEKSI STEGANOGRAFI & INTEGRITAS BINARY:{RESET}")
-        if stego.get("appended_data_detected"):
-            print(f"  * Appended Data     : {YELLOW}[PERINGATAN] Terdeteksi {stego.get('appended_data_size_bytes')} bytes setelah marker EOF (Potensi payload tersembunyi!){RESET}")
-        else:
-            print(f"  * Appended Data     : {GREEN}Bersih (Tidak ada data tersembunyi setelah EOF) [OK]{RESET}")
-
-        if stego.get("embedded_zip_detected"):
-            print(f"  * Embedded Archive  : {RED}[PERINGATAN] Terdeteksi arsip ZIP tersembunyi di dalam gambar!{RESET}")
-
-        strings_sample = stego.get("embedded_hidden_strings_sample", [])
-        if strings_sample:
-            print(f"  * Extracted Strings : {CYAN}{', '.join(strings_sample[:3])}{RESET}")
+            print(f"  * Status Trailing   : {GREEN}Bersih (Marker EOF valid, tidak ada appended data) [OK]{RESET}")
 
         print(f"{BLUE}{'='*67}{RESET}\n")
 

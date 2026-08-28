@@ -65,6 +65,7 @@
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
         }
         .card-header {
             font-size: 16px;
@@ -100,11 +101,11 @@
         <!-- Header -->
         <div class="header-card">
             <div class="header-title">
-                <h1>PATRICT-OSINT Media Forensics</h1>
+                <h1>PATRICT-OSINT Media & File Forensics</h1>
                 <p>Target File: <strong>{{ file_info.file_name }}</strong> ({{ file_info.file_size_formatted }})</p>
             </div>
             <div>
-                <span class="badge badge-cyan">File Forensics</span>
+                <span class="badge badge-cyan">Forensics Engine</span>
                 <span class="badge badge-green">{{ timestamp }}</span>
             </div>
         </div>
@@ -126,7 +127,7 @@
             <div class="card">
                 <div class="card-header">🔍 Magic Bytes Verification</div>
                 <table class="info-table">
-                    <tr><td>Tipe File Terdeteksi</td><td><strong>{{ forensics_data.magic_bytes_inspection.detected_file_type }}</strong></td></tr>
+                    <tr><td>Tipe File Asli</td><td><strong>{{ forensics_data.magic_bytes_inspection.detected_file_type }}</strong></td></tr>
                     <tr>
                         <td>Status Spoofing</td>
                         <td>
@@ -141,30 +142,29 @@
                 </table>
             </div>
 
-            <!-- Steganography & Appended Data -->
+            <!-- Shannon Entropy -->
             <div class="card">
-                <div class="card-header">🧪 Steganography & Integrity</div>
+                <div class="card-header">📊 Shannon Entropy Analysis</div>
                 <table class="info-table">
                     <tr>
-                        <td>Appended Data (EOF)</td>
+                        <td>File Entropy</td>
                         <td>
-                            {% if forensics_data.steganography_and_integrity.appended_data_detected %}
-                            <span class="badge badge-yellow">⚠️ {{ forensics_data.steganography_and_integrity.appended_data_size_bytes }} bytes after EOF</span>
-                            {% else %}
-                            <span class="badge badge-green">✔ CLEAN EOF</span>
-                            {% endif %}
+                            <strong>{{ forensics_data.shannon_entropy.entropy }}</strong> bits/byte
                         </td>
                     </tr>
                     <tr>
-                        <td>Embedded ZIP Archive</td>
+                        <td>Rating Rating</td>
                         <td>
-                            {% if forensics_data.steganography_and_integrity.embedded_zip_detected %}
-                            <span class="badge badge-red">⚠️ ZIP ARCHIVE DETECTED</span>
+                            {% if forensics_data.shannon_entropy.rating == 'VERY HIGH' %}
+                            <span class="badge badge-red">VERY HIGH</span>
+                            {% elif forensics_data.shannon_entropy.rating == 'HIGH' %}
+                            <span class="badge badge-yellow">HIGH</span>
                             {% else %}
-                            <span class="badge badge-green">✔ NO ZIP FOUND</span>
+                            <span class="badge badge-green">{{ forensics_data.shannon_entropy.rating }}</span>
                             {% endif %}
                         </td>
                     </tr>
+                    <tr><td>Interpretasi</td><td>{{ forensics_data.shannon_entropy.description }}</td></tr>
                 </table>
             </div>
         </div>
@@ -184,17 +184,20 @@
 
             <!-- EXIF Camera & GPS Info -->
             <div class="card">
-                <div class="card-header">📷 EXIF Camera & Geolocation</div>
+                <div class="card-header">📷 EXIF Camera, Optics & Geolocation</div>
                 <table class="info-table">
                     <tr><td>Kamera Make/Model</td><td>{{ forensics_data.exif_metadata.camera_make or '-' }} {{ forensics_data.exif_metadata.camera_model or '' }}</td></tr>
+                    <tr><td>Model Lensa</td><td>{{ forensics_data.exif_metadata.lens_model or '-' }}</td></tr>
                     <tr><td>Software Editor</td><td>{{ forensics_data.exif_metadata.software or '-' }}</td></tr>
+                    <tr><td>Author / Hak Cipta</td><td>{{ forensics_data.exif_metadata.artist or '-' }} (© {{ forensics_data.exif_metadata.copyright or '-' }})</td></tr>
+                    <tr><td>Parameter Optik</td><td>{{ forensics_data.exif_metadata.exposure_time or '' }} | {{ forensics_data.exif_metadata.f_number or '' }} | ISO {{ forensics_data.exif_metadata.iso_speed or '' }} | {{ forensics_data.exif_metadata.focal_length or '' }}</td></tr>
                     <tr><td>Waktu Pengambilan</td><td>{{ forensics_data.exif_metadata.datetime_original or '-' }}</td></tr>
                     <tr>
                         <td>GPS Koordinat</td>
                         <td>
                             {% if forensics_data.exif_metadata.gps_coordinates %}
-                            {{ forensics_data.exif_metadata.gps_coordinates.latitude }}, {{ forensics_data.exif_metadata.gps_coordinates.longitude }}<br>
-                            <a href="{{ forensics_data.exif_metadata.gps_coordinates.google_maps_url }}" target="_blank" style="color: var(--accent-cyan);">Buka Lokasi di Google Maps ↗</a>
+                            {{ forensics_data.exif_metadata.gps_coordinates.latitude }}, {{ forensics_data.exif_metadata.gps_coordinates.longitude }} ({{ forensics_data.exif_metadata.gps_coordinates.dms_formatted }})<br>
+                            <a href="{{ forensics_data.exif_metadata.gps_coordinates.google_maps_url }}" target="_blank" style="color: var(--accent-cyan); font-weight: 600;">Buka di Google Maps ↗</a>
                             {% else %}
                             <span style="color: var(--text-muted);">Tidak ada tag GPS di foto</span>
                             {% endif %}
@@ -204,17 +207,110 @@
             </div>
         </div>
 
+        <!-- PDF Document Forensics (if applicable) -->
+        {% if forensics_data.pdf_forensics and forensics_data.pdf_forensics.is_pdf %}
+        <div class="card">
+            <div class="card-header">📑 PDF Document Forensics & Security Audit</div>
+            <table class="info-table">
+                <tr><td>Versi PDF</td><td>{{ forensics_data.pdf_forensics.pdf_version }}</td></tr>
+                <tr><td>Judul Dokumen</td><td>{{ forensics_data.pdf_forensics.title or '-' }}</td></tr>
+                <tr><td>Author / Creator</td><td>{{ forensics_data.pdf_forensics.author or '-' }} / {{ forensics_data.pdf_forensics.creator or '-' }} (Producer: {{ forensics_data.pdf_forensics.producer or '-' }})</td></tr>
+                <tr><td>Waktu Dibuat</td><td>{{ forensics_data.pdf_forensics.creation_date or '-' }}</td></tr>
+                <tr><td>Total Halaman</td><td>{{ forensics_data.pdf_forensics.page_count }} Halaman</td></tr>
+                <tr><td>Status Enkripsi</td><td>{{ 'Terenkripsi (Password Protected)' if forensics_data.pdf_forensics.is_encrypted else 'Tidak Terenkripsi' }}</td></tr>
+                {% if forensics_data.pdf_forensics.suspicious_actions %}
+                <tr><td>Temuan Keamanan</td><td><span class="badge badge-red">{{ forensics_data.pdf_forensics.suspicious_actions | join(', ') }}</span></td></tr>
+                {% endif %}
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Office Document Forensics (if applicable) -->
+        {% if forensics_data.office_forensics and forensics_data.office_forensics.is_office_doc %}
+        <div class="card">
+            <div class="card-header">📄 Microsoft Office Forensics & Macro Audit</div>
+            <table class="info-table">
+                <tr><td>Tipe Dokumen</td><td>{{ forensics_data.office_forensics.doc_type }}</td></tr>
+                <tr><td>Author / Creator</td><td>{{ forensics_data.office_forensics.creator or '-' }}</td></tr>
+                <tr><td>Terakhir Diubah Oleh</td><td>{{ forensics_data.office_forensics.last_modified_by or '-' }} (Revisi: {{ forensics_data.office_forensics.revision or '1' }})</td></tr>
+                <tr><td>Aplikasi Pembuat</td><td>{{ forensics_data.office_forensics.application or '-' }} (v{{ forensics_data.office_forensics.app_version or '-' }})</td></tr>
+                <tr><td>Total Waktu Edit</td><td>{{ forensics_data.office_forensics.total_editing_time_minutes or '-' }}</td></tr>
+                <tr>
+                    <td>Status VBA Macros</td>
+                    <td>
+                        {% if forensics_data.office_forensics.has_vba_macros %}
+                        <span class="badge badge-red">⚠️ VBA MACROS DETECTED</span>
+                        {% else %}
+                        <span class="badge badge-green">✔ CLEAN (NO MACROS)</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Steganography, LSB & Binary Carving Grid -->
+        <div class="grid-2">
+            <!-- LSB Steganography -->
+            <div class="card">
+                <div class="card-header">🧪 LSB Steganography Quick Probing</div>
+                <table class="info-table">
+                    <tr>
+                        <td>Status LSB</td>
+                        <td>
+                            {% if forensics_data.lsb_steganography.suspicious_stego_detected %}
+                            <span class="badge badge-red">⚠️ ANOMALY / SIGNATURE DETECTED</span>
+                            {% else %}
+                            <span class="badge badge-green">✔ CLEAN (NO LSB ANOMALY)</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><td>Rasio Karakter ASCII</td><td>{{ (forensics_data.lsb_steganography.printable_ascii_ratio * 100) | round(1) }}% Printable Characters</td></tr>
+                    {% if forensics_data.lsb_steganography.detected_signatures %}
+                    <tr><td>Signature Terdeteksi</td><td>{{ forensics_data.lsb_steganography.detected_signatures | join(', ') }}</td></tr>
+                    {% endif %}
+                    {% if forensics_data.lsb_steganography.recovered_preview %}
+                    <tr><td>Preview LSB Snippet</td><td><code>{{ forensics_data.lsb_steganography.recovered_preview }}</code></td></tr>
+                    {% endif %}
+                </table>
+            </div>
+
+            <!-- Deep Binary Carving -->
+            <div class="card">
+                <div class="card-header">⛏️ Binary Carving & Trailing Payload</div>
+                <table class="info-table">
+                    <tr>
+                        <td>Status Trailing Data</td>
+                        <td>
+                            {% if forensics_data.binary_carving_and_payload.has_trailing_payload %}
+                            <span class="badge badge-red">⚠️ {{ forensics_data.binary_carving_and_payload.trailing_size_formatted }} AFTER EOF</span>
+                            {% else %}
+                            <span class="badge badge-green">✔ CLEAN EOF</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if forensics_data.binary_carving_and_payload.has_trailing_payload %}
+                    <tr><td>Tipe Payload</td><td><strong>{{ forensics_data.binary_carving_and_payload.detected_payload_type }}</strong></td></tr>
+                    <tr><td>Entropy Payload</td><td>{{ forensics_data.binary_carving_and_payload.trailing_entropy }} bits/byte</td></tr>
+                    <tr><td>File Hasil Carve</td><td><code>{{ forensics_data.binary_carving_and_payload.carved_file_path }}</code></td></tr>
+                    <tr><td>MD5 Carved File</td><td>{{ forensics_data.binary_carving_and_payload.carved_file_md5 }}</td></tr>
+                    {% endif %}
+                </table>
+            </div>
+        </div>
+
         <!-- Hidden / Extracted Strings -->
-        {% if forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}
+        {% if forensics_data.binary_carving_and_payload.interesting_strings or forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}
         <div class="card" style="margin-bottom: 25px;">
             <div class="card-header">📜 Extracted Interesting Printable Strings (Sample)</div>
-            <pre>{% for s in forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}{{ s }}
+            <pre>{% for s in forensics_data.binary_carving_and_payload.interesting_strings %}{{ s }}
+{% endfor %}{% for s in forensics_data.steganography_and_integrity.embedded_hidden_strings_sample %}{{ s }}
 {% endfor %}</pre>
         </div>
         {% endif %}
 
         <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 20px;">
-            PATRICT-OSINT v2.0 Media Forensics Engine &bull; Generated Automatically
+            PATRICT-OSINT v2.5 Media & File Forensics Engine &bull; Generated Automatically
         </div>
     </div>
 </body>
