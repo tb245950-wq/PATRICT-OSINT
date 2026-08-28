@@ -292,7 +292,11 @@ class ReportGenerator:
         hlr_info = p_data.get("hlr_carrier_intelligence", {})
         telecom_meta = p_data.get("telecom_meta", {})
         endpoints = p_data.get("endpoint_links", {})
+        threat_links = p_data.get("threat_intel_links", [])
         dorks = p_data.get("osint_dorks", [])
+        wa_intel = p_data.get("whatsapp_intelligence", {})
+
+        tz_str = ", ".join(telecom_meta.get("timezones", [])) if telecom_meta.get("timezones") else "Asia/Jakarta (WIB - UTC+7)"
 
         md = f"""# Telecommunications & Phone Intelligence Report
 
@@ -300,11 +304,14 @@ class ReportGenerator:
 **ITU-T E.164 Format:** `{formatting.get('e164', p_data.get('e164', target))}`  
 **National Format:** `{formatting.get('national', p_data.get('national', 'N/A'))}`  
 **Carrier:** `{hlr_info.get('carrier_name', p_data.get('carrier', 'N/A'))}` ({hlr_info.get('card_brand', 'Prepaid/Postpaid')})  
+**Granular Match:** `{hlr_info.get('match_level', 'Regional')} (Prefix: {hlr_info.get('prefix', '')})`  
 **Line Type:** `{telecom_meta.get('line_type', p_data.get('type', 'Mobile'))}`  
+**Timezone:** `{tz_str}`  
 **HLR Regional Area:** `{hlr_info.get('hlr_region', telecom_meta.get('location_description', 'Indonesia'))}`  
 **Network Code:** `MCC: {hlr_info.get('mcc', '510')} | MNC: {hlr_info.get('mnc', 'N/A')}`  
 **Caller ID Registry:** `{c_data.get('owner_name') or c_data.get('name') or 'Private / No Public Entry'}`  
 **Spam / Safety Score:** `{c_data.get('spam_score', '0%')} (Status: Clean)`  
+**WhatsApp Status:** `{wa_intel.get('status_badge', 'Direct Link Available')}`  
 **Data Breach Status:** `{e_data.get('breach_status', 'Clean / Not Found in Public Dumps')}`  
 **Generated At:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`  
 
@@ -319,7 +326,18 @@ class ReportGenerator:
 
 ---
 
-## 2. Automated OSINT Google Dorking Generator
+## 2. Threat Intel & Breach Engine Investigation Links
+
+| Platform | Category | Deep Search Link |
+|---|---|---|
+"""
+        for tl in threat_links:
+            md += f"| **{tl.get('platform')}** | {tl.get('category')} | [Buka {tl.get('platform')}]({tl.get('url')}) |\n"
+
+        md += """
+---
+
+## 3. Automated OSINT Google Dorking Generator
 
 | Category | Description | Google Search Link |
 |---|---|---|
@@ -328,12 +346,12 @@ class ReportGenerator:
             md += f"| **{d.get('category')}** | {d.get('description')} | [Buka Google Search]({d.get('google_search_url')}) |\n"
 
         if s_data.get("accounts"):
-            md += "\n---\n\n## 3. Social Media Accounts Found\n\n"
+            md += "\n---\n\n## 4. Social Media Accounts Found\n\n"
             for acc in s_data.get("accounts", []):
                 md += f"- **{acc.get('platform')}**: [{acc.get('url')}]({acc.get('url')})\n"
 
         if e_data.get("breaches"):
-            md += "\n---\n\n## 4. Public Data Breach Records\n\n"
+            md += "\n---\n\n## 5. Public Data Breach Records\n\n"
             for b in e_data.get("breaches", []):
                 md += f"- **[{b.get('breach_date', 'N/A')}] {b.get('title')}** ({b.get('domain')}): {', '.join(b.get('data_classes', []))}\n"
 

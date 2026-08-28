@@ -149,13 +149,17 @@ class PATRICTOrchestrator:
         telecom_meta = p_data.get("telecom_meta", {})
         hlr_info = p_data.get("hlr_carrier_intelligence", {})
         endpoints = p_data.get("endpoint_links", {})
+        threat_links = p_data.get("threat_intel_links", [])
         dorks = p_data.get("osint_dorks", [])
+        wa_intel = p_data.get("whatsapp_intelligence", {})
 
         e164_str = formatting.get("e164") or p_data.get("e164", target)
         nat_str = formatting.get("national") or p_data.get("national", "N/A")
         rfc3966_str = formatting.get("rfc3966", f"tel:{e164_str}")
         line_type = telecom_meta.get("line_type") or p_data.get("type", "Mobile / Seluler")
         is_valid = p_data.get("validation", {}).get("is_valid_e164", p_data.get("valid", True))
+        timezones = telecom_meta.get("timezones", [])
+        tz_display = ", ".join(timezones) if timezones else "Asia/Jakarta (WIB - UTC+7)"
 
         print(f"\n{BLUE}{'='*67}{RESET}")
         print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE TELEKOMUNIKASI (PHONE){RESET}")
@@ -165,12 +169,14 @@ class PATRICTOrchestrator:
         print(f"  {CYAN}Format Nasional{RESET}     : {WHITE}{nat_str}{RESET}")
         print(f"  {CYAN}Format RFC3966{RESET}      : {WHITE}{rfc3966_str}{RESET}")
         print(f"  {CYAN}Tipe Saluran (Line){RESET} : {WHITE}{line_type}{RESET}")
+        print(f"  {CYAN}Zona Waktu (TZ){RESET}     : {WHITE}{tz_display}{RESET}")
         print(f"  {CYAN}Status Validitas{RESET}    : {GREEN}ITU-T E.164 VALID [OK]{RESET}" if is_valid else f"  {CYAN}Status Validitas{RESET}    : {YELLOW}POSSIBLE / UNCONFIRMED{RESET}")
 
-        # 1. Database HLR & Operator Intelligence
+        # 1. Database HLR & Operator Intelligence Granular
         print(f"\n{YELLOW}[+] DATABASE OFFLINE HLR & OPERATOR TELEKOMUNIKASI:{RESET}")
         print(f"  * Operator / Provider : {GREEN}{BOLD}{hlr_info.get('carrier_name') or p_data.get('carrier', 'N/A')}{RESET}")
         print(f"  * Brand / Produk Kartu: {WHITE}{hlr_info.get('card_brand', 'Prepaid/Postpaid')}{RESET}")
+        print(f"  * Granularitas Prefix : {WHITE}{hlr_info.get('match_level', 'Regional')} (Prefix: {hlr_info.get('prefix', '')}){RESET}")
         mcc_mnc_str = f"MCC: {hlr_info.get('mcc', '510')} | MNC: {hlr_info.get('mnc', 'N/A')}"
         print(f"  * Kode Jaringan Telco : {WHITE}{mcc_mnc_str}{RESET}")
         print(f"  * Wilayah Alokasi HLR : {WHITE}{hlr_info.get('hlr_region') or telecom_meta.get('location_description', 'Indonesia')}{RESET}")
@@ -184,13 +190,15 @@ class PATRICTOrchestrator:
         print(f"  * Nama Teridentifikasi: {WHITE}{owner_name}{RESET}")
         print(f"  * Skor Reputasi/Spam  : {spam_display}")
 
-        # 3. Direct Messaging & Verification Deep Links
+        # 3. Direct Messaging & Passive WhatsApp Verification
         print(f"\n{YELLOW}[+] DIRECT MESSAGING & VERIFIKASI ENDPOINT:{RESET}")
         wa_link = endpoints.get("whatsapp_direct", f"https://wa.me/{re.sub(r'[^0-9]', '', e164_str)}")
         tg_link = endpoints.get("telegram_direct", f"https://t.me/+{re.sub(r'[^0-9]', '', e164_str)}")
         tc_link = endpoints.get("truecaller_search", f"https://www.truecaller.com/search/id/{re.sub(r'[^0-9]', '', nat_str)}")
         sync_link = endpoints.get("syncme_search", f"https://sync.me/search/?number={urllib.parse.quote_plus(e164_str)}")
 
+        wa_badge = wa_intel.get("status_badge", "Direct Link Available")
+        print(f"  * Status WhatsApp     : {GREEN if 'Active' in wa_intel.get('status', '') or wa_intel.get('is_business') else WHITE}{wa_badge}{RESET}")
         print(f"  * WhatsApp Direct API : {CYAN}{wa_link}{RESET}")
         print(f"  * Telegram Profile    : {CYAN}{tg_link}{RESET}")
         print(f"  * Truecaller Lookup   : {CYAN}{tc_link}{RESET}")
@@ -207,7 +215,14 @@ class PATRICTOrchestrator:
         else:
             print(f"  * Status Kebocoran    : {GREEN}{breach_status} [AMAN]{RESET}")
 
-        # 5. Media Sosial Terverifikasi
+        # 5. Threat Intel & Deep Breach Search Links
+        if threat_links:
+            print(f"\n{YELLOW}[+] THREAT INTEL & DEEP BREACH SEARCH SHORTCUTS:{RESET}")
+            for tl in threat_links[:4]:
+                print(f"  * {WHITE}{BOLD}{tl.get('platform')}{RESET} ({tl.get('category')}):")
+                print(f"    {CYAN}{tl.get('url')}{RESET}")
+
+        # 6. Media Sosial Terverifikasi
         accounts = s_data.get("accounts", []) if isinstance(s_data, dict) else []
         print(f"\n{YELLOW}[+] AKUN MEDIA SOSIAL TERHUBUNG ({len(accounts)} Ditemukan):{RESET}")
         if accounts:
@@ -216,14 +231,13 @@ class PATRICTOrchestrator:
         else:
             print(f"  * {WHITE}Tidak ditemukan akun media sosial publik dengan signature nomor ini.{RESET}")
 
-        # 6. Automated OSINT Google Dorking Generator (Clickable Links)
+        # 7. Automated OSINT Google Dorking Generator (Clickable Links)
         print(f"\n{YELLOW}[+] GOOGLE & DUCKDUCKGO OSINT DORKING LINKS:{RESET}")
         if dorks:
             for d in dorks:
                 print(f"  * {WHITE}{BOLD}{d.get('category')}{RESET}:")
                 print(f"    {CYAN}{d.get('google_search_url')}{RESET}")
         else:
-            # Fallback jika list dorks belum terisi
             encoded_q = urllib.parse.quote(f'"{e164_str}" OR "{nat_str}"')
             print(f"  * Dokumen Publik (.PDF/.XLSX): {CYAN}https://www.google.com/search?q={encoded_q}+filetype:pdf{RESET}")
             print(f"  * Marketplace & Forum        : {CYAN}https://www.google.com/search?q={encoded_q}+site:tokopedia.com+OR+site:shopee.co.id{RESET}")
