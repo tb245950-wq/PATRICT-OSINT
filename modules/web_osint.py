@@ -43,7 +43,7 @@ class WebOSINT(BaseOSINTModule):
     name: str = "Web & Infrastructure Intelligence"
     module_id: str = "web_osint"
     description: str = "Analisis mendalam web ala WhatWeb: SSL/TLS, crt.sh CT logs, Security Headers Grader, Cloudflare Origin Leak, Sensitive Files (Soft 404 filtered), WAF, JWT, tech stack & Threat Summary."
-    version: str = "2.3.0"
+    version: str = "2.3.1"
     priority: int = 1
     target_type: str = "web"
 

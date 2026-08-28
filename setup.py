@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="patrict-osint",
-    version="2.3.0",
+    version="2.3.1",
     description="Automated Multi-Domain OSINT & Digital Forensics Framework",
     author="Muhammad Mughni",
     author_email="rootacces@proton.me",
