@@ -6,6 +6,7 @@ import socket
 import base64
 import hashlib
 import asyncio
+import aiohttp
 import ipaddress
 import http.client
 import urllib.parse
@@ -1234,7 +1235,7 @@ class WebOSINT(BaseOSINTModule):
 
         try:
             session = await self.async_client.get_session()
-            async with session.get(url, allow_redirects=True, timeout=12) as response:
+            async with session.get(url, allow_redirects=True, timeout=aiohttp.ClientTimeout(total=10)) as response:
                 for resp in response.history:
                     redirect_chain.append({
                         "status_code": resp.status,

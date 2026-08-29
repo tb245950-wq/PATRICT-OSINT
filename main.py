@@ -434,7 +434,38 @@ class PATRICTOrchestrator:
                 if r_val:
                     print(f"  * {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
 
-        # 9. Executive Vulnerability & Threat Assessment Summary Matrix
+        # 9. Network & Infrastructure OSINT (if available)
+        net_data = results.get("network_osint", {}).get("data", {})
+        if net_data:
+            print(f"\n{YELLOW}[+] INFRASTRUKTUR JARINGAN & REVERSE DNS:{RESET}")
+            print(f"  * Target Host       : {WHITE}{net_data.get('target_host')}{RESET}")
+            if net_data.get("resolved_ipv4"):
+                print(f"  * Alamat IPv4       : {WHITE}{', '.join(net_data.get('resolved_ipv4'))}{RESET}")
+            if net_data.get("resolved_ipv6"):
+                print(f"  * Alamat IPv6       : {WHITE}{', '.join(net_data.get('resolved_ipv6'))}{RESET}")
+            print(f"  * Reverse DNS (PTR) : {CYAN}{net_data.get('reverse_dns_ptr')}{RESET}")
+            asn = net_data.get("asn_and_isp", {})
+            if asn.get("isp") and asn.get("isp") != "N/A":
+                print(f"  * ISP / Organisasi  : {WHITE}{asn.get('isp')} ({asn.get('org', 'N/A')}) - ASN: {asn.get('as_number', 'N/A')}{RESET}")
+            open_ports = net_data.get("open_ports_summary", [])
+            if open_ports:
+                ports_str = ", ".join([f"{p['port']}/{p['service']}" for p in open_ports])
+                print(f"  * Port Terbuka      : {GREEN}{ports_str}{RESET}")
+
+        # 10. Web Presence & Wayback Machine History (if available)
+        hist_data = results.get("web_history", {}).get("data", {})
+        if hist_data and hist_data.get("has_history"):
+            print(f"\n{YELLOW}[+] RIWAYAT ARSIP WEB (WAYBACK MACHINE CDX):{RESET}")
+            print(f"  * Status Arsip      : {GREEN}{hist_data.get('status')}{RESET}")
+            print(f"  * Snapshot Pertama  : {WHITE}{hist_data.get('first_snapshot') or 'N/A'}{RESET}")
+            print(f"  * Snapshot Terakhir : {WHITE}{hist_data.get('last_snapshot') or 'N/A'}{RESET}")
+            hist_urls = hist_data.get("historical_urls", [])
+            if hist_urls:
+                print(f"  * Arsip Snapshot URL:")
+                for hu in hist_urls[:3]:
+                    print(f"    - [{CYAN}{hu.get('timestamp')}{RESET}] ({hu.get('status_code')}) {WHITE}{hu.get('wayback_url')}{RESET}")
+
+        # 11. Executive Vulnerability & Threat Assessment Summary Matrix
         print(f"\n{BLUE}{'='*67}{RESET}")
         print(f"         {WHITE}{BOLD}RANGKUMAN ANCAMAN & VULNERABILITY ASSESSMENT{RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
@@ -705,10 +736,48 @@ class PATRICTOrchestrator:
 
 def detect_target_type(target: str) -> str:
     target_clean = target.strip()
-    if target_clean.startswith("http://") or target_clean.startswith("https://") or (re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(/.*)?$", target_clean) and not target_clean.startswith("+")):
-        return "web"
-    if os.path.exists(target_clean) or any(target_clean.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".pdf", ".tiff"]):
+    
+    # 1. Deteksi Target Berkas / File Forensics
+    file_extensions = [
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".pdf", ".tiff", ".tif",
+        ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2",
+        ".elf", ".exe", ".dll", ".so", ".bin", ".sqlite", ".db", ".sqlite3"
+    ]
+    if os.path.exists(target_clean) or any(target_clean.lower().endswith(ext) for ext in file_extensions):
         return "file"
+
+    # 2. Deteksi Alamat IP Mentah (IPv4 / IPv6) -> Mode Web & Infra OSINT
+    host_candidate = target_clean
+    if host_candidate.startswith("http://") or host_candidate.startswith("https://"):
+        try:
+            parsed = urllib.parse.urlparse(host_candidate)
+            host_candidate = parsed.netloc or parsed.path
+        except Exception:
+            pass
+    if ":" in host_candidate and not host_candidate.startswith("["):
+        host_candidate = host_candidate.split(":")[0]
+    if "/" in host_candidate:
+        host_candidate = host_candidate.split("/")[0]
+
+    try:
+        import ipaddress
+        ipaddress.ip_address(host_candidate)
+        return "web"
+    except (ValueError, ImportError):
+        pass
+
+    # 3. Deteksi Skema URL atau Domain Web Valid
+    if target_clean.startswith("http://") or target_clean.startswith("https://"):
+        return "web"
+    if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+(/.*)?$", target_clean) and not target_clean.startswith("+"):
+        return "web"
+
+    # 4. Deteksi Nomor Telepon Standar (Phone Intelligence)
+    digits_only = re.sub(r'[^0-9]', '', target_clean)
+    if target_clean.startswith("+") or (len(digits_only) >= 7 and len(digits_only) <= 16 and (target_clean.startswith("0") or target_clean.startswith("62") or digits_only == target_clean or "-" in target_clean or " " in target_clean)):
+        return "phone"
+
     return "phone"
 
 def select_menu_interactive(options: List[str]) -> int:

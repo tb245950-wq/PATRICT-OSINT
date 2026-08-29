@@ -74,6 +74,12 @@ class AsyncHttpClient:
             self._session = aiohttp.ClientSession(timeout=timeout, connector=connector)
         return self._session
         
+    def _prepare_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        kw = dict(kwargs)
+        if "timeout" in kw and isinstance(kw["timeout"], (int, float)):
+            kw["timeout"] = aiohttp.ClientTimeout(total=float(kw["timeout"]))
+        return kw
+
     async def get(self, url: str, headers: Optional[Dict[str, str]] = None, **kwargs) -> Tuple[int, str, Dict[str, str]]:
         """
         Melakukan HTTP GET asynchronous dengan semaphore rate limiting.
@@ -83,9 +89,10 @@ class AsyncHttpClient:
             session = await self.get_session()
             req_headers = self._get_headers(headers)
             proxy = self._get_proxy()
+            call_kwargs = self._prepare_kwargs(kwargs)
             
             try:
-                async with session.get(url, headers=req_headers, proxy=proxy, allow_redirects=True, **kwargs) as resp:
+                async with session.get(url, headers=req_headers, proxy=proxy, allow_redirects=True, **call_kwargs) as resp:
                     text = await resp.text(errors="ignore")
                     return resp.status, text, dict(resp.headers)
             except Exception as e:
@@ -96,9 +103,10 @@ class AsyncHttpClient:
             session = await self.get_session()
             req_headers = self._get_headers(headers)
             proxy = self._get_proxy()
+            call_kwargs = self._prepare_kwargs(kwargs)
             
             try:
-                async with session.head(url, headers=req_headers, proxy=proxy, allow_redirects=True, **kwargs) as resp:
+                async with session.head(url, headers=req_headers, proxy=proxy, allow_redirects=True, **call_kwargs) as resp:
                     return resp.status, dict(resp.headers)
             except Exception:
                 return 0, {}
@@ -108,9 +116,10 @@ class AsyncHttpClient:
             session = await self.get_session()
             req_headers = self._get_headers(headers)
             proxy = self._get_proxy()
+            call_kwargs = self._prepare_kwargs(kwargs)
             
             try:
-                async with session.options(url, headers=req_headers, proxy=proxy, allow_redirects=True, **kwargs) as resp:
+                async with session.options(url, headers=req_headers, proxy=proxy, allow_redirects=True, **call_kwargs) as resp:
                     text = await resp.text(errors="ignore")
                     return resp.status, text, dict(resp.headers)
             except Exception as e:
