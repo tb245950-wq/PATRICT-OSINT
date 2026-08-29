@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PATRICT-OSINT | Web Intelligence & Threat Report - {{ domain }}</title>
+    <title>PATRICT-OSINT // Enterprise Web Intelligence & Threat Assessment - {{ web_data.domain or domain }}</title>
     <style>
         :root {
             --bg-primary: #0a0e17;
@@ -14,14 +14,15 @@
             --accent-green: #00e676;
             --accent-yellow: #ffd600;
             --accent-red: #ff5252;
+            --accent-purple: #bb86fc;
             --text-main: #f0f4f8;
             --text-muted: #8e9bb0;
             --border-color: #2a3b5c;
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
         body { background-color: var(--bg-primary); color: var(--text-main); line-height: 1.6; padding: 25px; }
-        .container { max-width: 1300px; margin: 0 auto; }
+        .container { max-width: 1350px; margin: 0 auto; }
 
         /* Header & Banner */
         .header-card {
@@ -36,25 +37,28 @@
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
         .header-title h1 {
-            font-size: 24px;
+            font-size: 22px;
             background: linear-gradient(90deg, var(--accent-cyan), var(--accent-blue));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 6px;
+            letter-spacing: 0.5px;
         }
-        .header-title p { color: var(--text-muted); font-size: 14px; }
+        .header-title p { color: var(--text-muted); font-size: 13px; }
         .badge {
             display: inline-block;
-            padding: 6px 14px;
+            padding: 5px 12px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .badge-cyan { background: rgba(0, 242, 254, 0.15); color: var(--accent-cyan); border: 1px solid var(--accent-cyan); }
         .badge-green { background: rgba(0, 230, 118, 0.15); color: var(--accent-green); border: 1px solid var(--accent-green); }
         .badge-red { background: rgba(255, 82, 82, 0.15); color: var(--accent-red); border: 1px solid var(--accent-red); }
         .badge-yellow { background: rgba(255, 214, 0, 0.15); color: var(--accent-yellow); border: 1px solid var(--accent-yellow); }
+        .badge-purple { background: rgba(187, 134, 252, 0.15); color: var(--accent-purple); border: 1px solid var(--accent-purple); }
 
         /* Grade Badge */
         .grade-badge {
@@ -82,7 +86,7 @@
             align-items: flex-start;
             gap: 15px;
         }
-        .alert-box h4 { color: var(--accent-red); font-size: 16px; margin-bottom: 4px; }
+        .alert-box h4 { color: var(--accent-red); font-size: 15px; margin-bottom: 4px; }
         .alert-box p { font-size: 13px; color: var(--text-main); }
 
         /* Grid Layout */
@@ -100,7 +104,7 @@
             margin-bottom: 25px;
         }
         .card-header {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 600;
             color: var(--accent-cyan);
             border-bottom: 1px solid var(--border-color);
@@ -114,54 +118,25 @@
         /* Key Value Tables */
         .info-table { width: 100%; border-collapse: collapse; }
         .info-table td, .info-table th { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; text-align: left; }
-        .info-table th { color: var(--accent-cyan); font-weight: 600; background: rgba(0,0,0,0.2); }
+        .info-table th { color: var(--accent-cyan); font-weight: 600; background: rgba(0,0,0,0.25); }
         .info-table td:first-child { color: var(--text-muted); font-weight: 500; }
         .info-table td:last-child { color: var(--text-main); }
 
-        /* Tags */
-        .tag-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-        .tag {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            color: var(--text-main);
-        }
-        .tag-pill { background: rgba(79, 172, 254, 0.15); border-color: var(--accent-blue); color: var(--accent-blue); }
-
-        /* Subdomains List */
-        .subdomain-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-            gap: 10px;
-            max-height: 250px;
-            overflow-y: auto;
-            padding-right: 5px;
-        }
-        .subdomain-item {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: monospace;
-            color: var(--accent-cyan);
-            word-break: break-all;
-        }
+        /* Scrollable Tables */
+        .table-container { max-height: 280px; overflow-y: auto; }
 
         /* Threat Cards */
         .threat-item {
             background: var(--bg-card);
             border-left: 4px solid var(--accent-red);
             border-radius: 6px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
+            padding: 12px 16px;
+            margin-bottom: 10px;
         }
-        .threat-item.HIGH { border-left-color: var(--accent-red); }
+        .threat-item.HIGH, .threat-item.CRITICAL { border-left-color: var(--accent-red); }
         .threat-item.MEDIUM { border-left-color: var(--accent-yellow); }
         .threat-item.LOW { border-left-color: var(--accent-cyan); }
-        .threat-title { font-weight: 600; font-size: 14px; color: var(--text-main); margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .threat-title { font-weight: 600; font-size: 13px; color: var(--text-main); margin-bottom: 4px; display: flex; justify-content: space-between; }
         .threat-desc { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
         .threat-fix { font-size: 12px; color: var(--accent-green); background: rgba(0, 230, 118, 0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; }
 
@@ -175,9 +150,9 @@
     <!-- Header Banner -->
     <div class="header-card">
         <div class="header-title">
-            <h1>PATRICT-OSINT // WEB RECON & THREAT AUDIT</h1>
-            <p>Target: <strong>{{ target_url }}</strong> (Domain: <code>{{ domain }}</code>)</p>
-            <p style="margin-top: 4px; font-size: 12px;">Waktu Pemindaian: {{ timestamp }}</p>
+            <h1>PATRICT-OSINT // ENTERPRISE WEB RECON & THREAT ENGINE</h1>
+            <p>Target FQDN: <strong>{{ web_data.domain_identity.target_fqdn or web_data.domain }}</strong> | Apex Domain: <code>{{ web_data.domain_identity.root_domain or web_data.domain }}</code></p>
+            <p style="margin-top: 4px; font-size: 12px;">Waktu Analisis: {{ timestamp }} | Scope: {% if web_data.domain_identity.is_subdomain %}Subdomain ({{ web_data.domain_identity.subdomain_prefix }}){% else %}Apex Root Domain (Full Infrastructure){% endif %}</p>
         </div>
         <div style="text-align: right; display: flex; gap: 15px; align-items: center;">
             <div>
@@ -213,7 +188,7 @@
     </div>
     {% endif %}
 
-    <!-- Grid 1: Executive Threat Summary & Security Headers Grader -->
+    <!-- Grid 1: Executive Vulnerability Summary & Domain Identity -->
     <div class="grid-2">
         <!-- Threat Assessment Summary -->
         <div class="card">
@@ -239,44 +214,169 @@
             {% endif %}
         </div>
 
-        <!-- Security Headers Grader -->
+        <!-- Domain Identity & Server Info -->
         <div class="card">
             <div class="card-header">
-                <span>🔒 Security Headers Grader</span>
-                <span class="badge badge-cyan">Score: {{ sec_grade.score or 0 }}/100</span>
+                <span>🌐 Domain Identity & Infrastructure Scope</span>
+                <span class="badge badge-cyan">{{ web_data.final_status }} OK</span>
             </div>
+            <table class="info-table">
+                <tr>
+                    <td>Target FQDN</td>
+                    <td><code>{{ web_data.domain_identity.target_fqdn or web_data.domain }}</code></td>
+                </tr>
+                <tr>
+                    <td>Apex / Root Domain</td>
+                    <td><code>{{ web_data.domain_identity.root_domain or web_data.domain }}</code></td>
+                </tr>
+                <tr>
+                    <td>Server IP Publik</td>
+                    <td><strong>{{ server_geoip.ip or 'N/A' }}</strong></td>
+                </tr>
+                <tr>
+                    <td>Lokasi Server</td>
+                    <td>{{ server_geoip.city or '' }} {{ server_geoip.country or 'Unknown' }}</td>
+                </tr>
+                <tr>
+                    <td>ISP / Organisasi</td>
+                    <td>{{ server_geoip.isp or 'Unknown ISP' }} (ASN: {{ server_geoip.asn or 'N/A' }})</td>
+                </tr>
+                <tr>
+                    <td>Auth Architecture</td>
+                    <td><span class="badge badge-purple">{{ web_data.auth_intelligence.auth_architecture or 'Stateless' }}</span></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Grid 2: Passive Subdomain Enumeration & Auth/JWT Fingerprinting -->
+    <div class="grid-2">
+        <!-- Passive Subdomain Enumeration -->
+        <div class="card">
+            <div class="card-header">
+                <span>🔍 Passive Subdomains Discovery (Multi-Source)</span>
+                <span class="badge badge-cyan">{{ web_data.passive_subdomains.total_found or 0 }} Ditemukan</span>
+            </div>
+            {% if web_data.passive_subdomains.subdomains %}
+            <div class="table-container">
+                <table class="info-table">
+                    <thead>
+                        <tr>
+                            <th>Subdomain</th>
+                            <th>Resolved IP</th>
+                            <th>Provider</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sub in web_data.passive_subdomains.subdomains %}
+                        <tr>
+                            <td>
+                                <code>{{ sub.subdomain }}</code>
+                                {% if sub.is_target_fqdn %}<span class="badge badge-yellow" style="font-size: 9px; padding: 2px 6px;">TARGET</span>{% endif %}
+                            </td>
+                            <td>{{ sub.ip }}</td>
+                            <td><span class="badge {% if sub.is_cdn %}badge-cyan{% else %}badge-green{% endif %}">{{ sub.cdn_provider }}</span></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="color: var(--text-muted); font-size: 13px;">Tidak ditemukan subdomain pasif tambahan di CT logs / DNS records.</p>
+            {% endif %}
+        </div>
+
+        <!-- Authentication & Token Fingerprinting -->
+        <div class="card">
+            <div class="card-header">
+                <span>🔑 Authentication & Token Fingerprinting</span>
+                <span class="badge badge-purple">{{ web_data.auth_intelligence.auth_types_detected | length }} Mode</span>
+            </div>
+            <table class="info-table">
+                <tr>
+                    <td>Arsitektur Autentikasi</td>
+                    <td><strong>{{ web_data.auth_intelligence.auth_architecture }}</strong></td>
+                </tr>
+                <tr>
+                    <td>Laravel Sanctum SPA</td>
+                    <td>
+                        {% if web_data.auth_intelligence.laravel_sanctum.is_sanctum_active %}
+                            <span class="badge badge-green">ACTIVE (/sanctum/csrf-cookie)</span>
+                        {% else %}
+                            <span class="badge badge-yellow">NOT ACTIVE / STANDARD</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <td>Cookie Security Audit</td>
+                    <td>
+                        HttpOnly: {% if web_data.auth_intelligence.cookie_audit.httponly_all %}<span class="badge badge-green">PASS</span>{% else %}<span class="badge badge-red">FAIL</span>{% endif %} |
+                        Secure: {% if web_data.auth_intelligence.cookie_audit.secure_all %}<span class="badge badge-green">PASS</span>{% else %}<span class="badge badge-red">FAIL</span>{% endif %}
+                    </td>
+                </tr>
+            </table>
+
+            {% if web_data.auth_intelligence.jwt_tokens %}
+            <div style="margin-top: 15px;">
+                <div style="font-size: 13px; font-weight: 600; color: var(--accent-yellow); margin-bottom: 8px;">Decoded JSON Web Tokens (JWT):</div>
+                {% for jwt in web_data.auth_intelligence.jwt_tokens %}
+                <div style="background: var(--bg-card); padding: 10px; border-radius: 6px; margin-bottom: 8px; font-size: 12px;">
+                    <div><strong>Location:</strong> {{ jwt.found_in }} | <strong>Alg:</strong> {{ jwt.algorithm }}</div>
+                    <div><strong>Issuer:</strong> {{ jwt.issuer }} | <strong>Subject:</strong> {{ jwt.subject }}</div>
+                    <div><strong>Expiration:</strong> {{ jwt.expiration }} ({% if jwt.is_expired %}<span style="color:var(--accent-red)">EXPIRED</span>{% else %}<span style="color:var(--accent-green)">VALID</span>{% endif %})</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Grid 3: Content Discovery & Sensitive Endpoints -->
+    <div class="card">
+        <div class="card-header">
+            <span>📁 Content Discovery & Sensitive Endpoints (Soft-404 Filtered)</span>
+            <span class="badge badge-yellow">{{ web_data.content_discovery.total_discovered or 0 }} Ditemukan</span>
+        </div>
+        {% if web_data.content_discovery.endpoints %}
+        <div class="table-container">
             <table class="info-table">
                 <thead>
                     <tr>
-                        <th>Security Header</th>
-                        <th>Status</th>
-                        <th>Score</th>
-                        <th>Details</th>
+                        <th>Path</th>
+                        <th>Status Badge</th>
+                        <th>Severity</th>
+                        <th>Kategori / Deskripsi</th>
+                        <th>Content-Type</th>
+                        <th>Ukuran</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for h_name, h_val in sec_grade.evaluations.items() %}
+                    {% for ep in web_data.content_discovery.endpoints %}
                     <tr>
-                        <td><code>{{ h_name }}</code></td>
-                        <td>
-                            {% if h_val.status == 'PASS' %}
-                                <span class="badge badge-green">PASS</span>
-                            {% elif h_val.status == 'WARN' %}
-                                <span class="badge badge-yellow">WARN</span>
-                            {% else %}
-                                <span class="badge badge-red">FAIL</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ h_val.score }}</td>
-                        <td style="font-size: 12px; color: var(--text-muted);">{{ h_val.details }}</td>
+                        <td><code>{{ ep.path }}</code></td>
+                        <td><span class="badge {% if ep.status == 200 %}badge-green{% elif ep.status in [401, 403] %}badge-yellow{% else %}badge-cyan{% endif %}">{{ ep.status_badge }}</span></td>
+                        <td><span class="badge {% if ep.severity in ['CRITICAL', 'HIGH'] %}badge-red{% elif ep.severity == 'BLOCKED' %}badge-green{% elif ep.severity == 'MEDIUM' %}badge-yellow{% else %}badge-cyan{% endif %}">{{ ep.severity }}</span></td>
+                        <td>{{ ep.description }}</td>
+                        <td style="font-size: 11px;">{{ ep.content_type }}</td>
+                        <td>{{ ep.size_bytes }} B</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+        {% else %}
+        <p style="color: var(--text-muted); font-size: 13px;">Tidak ditemukan file sensitif yang bocor secara terbuka pada path yang dipindai.</p>
+        {% endif %}
+
+        {% if web_data.content_discovery.cdx_historical_paths_found %}
+        <div style="margin-top: 15px; font-size: 12px; color: var(--text-muted);">
+            <strong style="color: var(--accent-cyan);">Wayback Machine Historical Endpoints:</strong>
+            {{ web_data.content_discovery.cdx_historical_paths_found | join(', ') }}
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Grid 2: SSL/TLS Certificate & Passive CT Subdomains -->
+    <!-- Grid 4: SSL/TLS Certificate & Security Headers -->
     <div class="grid-2">
         <!-- SSL/TLS Intelligence -->
         <div class="card">
@@ -293,7 +393,7 @@
                 </tr>
                 <tr>
                     <td>Subject CN</td>
-                    <td>{{ ssl_info.subject.commonName or domain }}</td>
+                    <td>{{ ssl_info.subject.commonName or web_data.domain }}</td>
                 </tr>
                 <tr>
                     <td>Masa Berlaku</td>
@@ -304,62 +404,14 @@
                     <td><code>{{ ssl_info.tls_version or 'N/A' }}</code> ({{ ssl_info.cipher or 'N/A' }})</td>
                 </tr>
                 <tr>
+                    <td>Wildcard Status</td>
+                    <td>{% if ssl_info.has_wildcard %}<span class="badge badge-yellow">WILDCARD (*.) ACTIVE</span>{% else %}Single/Multi-Host{% endif %}</td>
+                </tr>
+                <tr>
                     <td>Subject Alt Names (SAN)</td>
                     <td>{{ ssl_info.san_list | length }} domain terdaftar</td>
                 </tr>
             </table>
-        </div>
-
-        <!-- Passive Subdomain Discovery (crt.sh) -->
-        <div class="card">
-            <div class="card-header">
-                <span>🌐 Passive Subdomains Discovery (CT Logs via crt.sh)</span>
-                <span class="badge badge-cyan">{{ crt_data.total_found or 0 }} Subdomain</span>
-            </div>
-            {% if crt_data.unique_subdomains %}
-            <div class="subdomain-grid">
-                {% for sub in crt_data.unique_subdomains %}
-                <div class="subdomain-item">{{ sub }}</div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <p style="color: var(--text-muted); font-size: 13px;">Tidak ada catatan subdomain publik di CT logs.</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Sensitive Files & Tech Stack -->
-    <div class="grid-2">
-        <!-- Sensitive Files Discovery -->
-        <div class="card">
-            <div class="card-header">
-                <span>📁 Sensitive File & Directory Discovery</span>
-                <span class="badge badge-yellow">{{ sensitive_files | length }} Ditemukan</span>
-            </div>
-            {% if sensitive_files %}
-            <table class="info-table">
-                <thead>
-                    <tr>
-                        <th>Path</th>
-                        <th>Status</th>
-                        <th>Severity</th>
-                        <th>Deskripsi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for sf in sensitive_files %}
-                    <tr>
-                        <td><code>{{ sf.path }}</code></td>
-                        <td><span class="badge {% if sf.status == 200 %}badge-green{% elif sf.status in [401, 403] %}badge-yellow{% else %}badge-cyan{% endif %}">{{ sf.status }}</span></td>
-                        <td><span class="badge {% if sf.severity in ['CRITICAL', 'HIGH'] %}badge-red{% elif sf.severity == 'BLOCKED' %}badge-green{% elif sf.severity == 'MEDIUM' %}badge-yellow{% else %}badge-cyan{% endif %}">{{ sf.severity }}</span></td>
-                        <td style="font-size: 12px;">{{ sf.description }} ({{ sf.size_bytes }} B)</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p style="color: var(--text-muted); font-size: 13px;">Tidak ada file sensitif yang bocor secara terbuka.</p>
-            {% endif %}
         </div>
 
         <!-- Tech Stack WhatWeb -->
@@ -397,8 +449,8 @@
     </div>
 
     <footer>
-        <p>Laporan Dibuat Secara Otomatis oleh <strong>PATRICT-OSINT Framework v2.3.0</strong></p>
-        <p>Komunitas Riset Keamanan Siber & Forensik Digital</p>
+        <p>Laporan Dibuat Secara Otomatis oleh <strong>PATRICT-OSINT Framework v3.0.0 Enterprise Edition</strong></p>
+        <p>Advanced Cyber Threat Intelligence & Forensics Automation</p>
     </footer>
 
 </div>

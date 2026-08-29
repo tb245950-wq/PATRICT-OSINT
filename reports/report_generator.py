@@ -164,15 +164,22 @@ class ReportGenerator:
         stack = w_data.get("tech_stack", {})
         sec_grade = w_data.get("security_headers_grade", {})
         ssl_info = w_data.get("ssl_certificate", {})
-        crt_data = w_data.get("crtsh_subdomains", {})
+        identity = w_data.get("domain_identity", {})
+        subdomains_info = w_data.get("passive_subdomains", {})
+        auth_info = w_data.get("auth_intelligence", {})
+        discovery = w_data.get("content_discovery", {})
         origin_leak = w_data.get("origin_ip_leak", {})
-        sensitive_files = w_data.get("sensitive_files_found", [])
         threat_data = w_data.get("threat_vulnerability_summary", {})
 
-        md = f"""# Web Intelligence & Threat Assessment Report
+        target_fqdn = identity.get("target_fqdn") or w_data.get("domain", target)
+        root_domain = identity.get("root_domain") or target_fqdn
+
+        md = f"""# Web Intelligence & Enterprise Threat Assessment Report
 
 **Target URL:** `{target}`  
-**Domain:** `{w_data.get('domain', 'N/A')}`  
+**Target FQDN:** `{target_fqdn}`  
+**Apex / Root Domain:** `{root_domain}`  
+**Subdomain Prefix:** `{identity.get('subdomain_prefix') or '(None - Root Scope)'}`  
 **Generated At:** `{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}`  
 **Security Headers Grade:** **`{sec_grade.get('grade', 'N/A')}`** (Score: `{sec_grade.get('score', 0)}/100`)  
 **Overall Threat Level:** **`{threat_data.get('overall_threat_level', 'LOW')}`** (Risk Score: `{threat_data.get('risk_score', 0)}/100`)
@@ -181,13 +188,15 @@ class ReportGenerator:
 
 ## 1. Executive Vulnerability & Threat Summary
 
-| Metric | Value |
+| Metric | Assessment Value |
 |---|---|
 | **Overall Threat Level** | **{threat_data.get('overall_threat_level', 'LOW')}** |
 | **Risk Score** | `{threat_data.get('risk_score', 0)} / 100` |
-| **Security Headers Grade** | `{sec_grade.get('grade', 'N/A')}` |
+| **Security Headers Grade** | `{sec_grade.get('grade', 'N/A')}` (Score: `{sec_grade.get('score', 0)}/100`) |
+| **Authentication Architecture** | `{auth_info.get('auth_architecture', 'Standard / Stateless')}` |
 | **Origin IP Leak** | `{'DETECTED (!)' if origin_leak.get('leak_detected') else 'Protected / None'}` |
-| **Sensitive Files Discovered** | `{len([f for f in sensitive_files if f.get('status') == 200])} Active` |
+| **Passive Subdomains Found** | `{subdomains_info.get('total_found', 0)} subdomains ({subdomains_info.get('active_count', 0)} active)` |
+| **Sensitive Endpoints Discovered** | `{discovery.get('total_discovered', 0)} endpoints` |
 
 ### Identified Threats & Mitigations
 """
@@ -199,16 +208,103 @@ class ReportGenerator:
 - **Recommended Action:** {t.get('mitigation')}
 """
 
-        # Origin Leak section
+        # 2. Domain Identity & SSL
+        md += f"""
+---
+
+## 2. Domain Identity & SSL/TLS Certificate
+
+- **Target FQDN:** `{target_fqdn}`
+- **Apex / Root Domain:** `{root_domain}`
+- **Issuer Organization:** `{ssl_info.get('issuer', {}).get('organizationName', 'N/A')}` ({ssl_info.get('issuer', {}).get('commonName', 'N/A')})
+- **Valid Until:** `{ssl_info.get('valid_until', 'N/A')}` ({ssl_info.get('days_remaining') if ssl_info.get('days_remaining') is not None else 'N/A'} days remaining)
+- **TLS Protocol & Cipher:** `{ssl_info.get('tls_version', 'N/A')}` - `{ssl_info.get('cipher', 'N/A')}`
+- **Wildcard Certificate:** `{'YES - Wildcard (*.) detected' if ssl_info.get('has_wildcard') else 'NO - Single/Multi-Host'}`
+- **SANs Registered:** `{len(ssl_info.get('san_list', []))} domains`
+"""
+        if ssl_info.get("san_list"):
+            md += "### Subject Alternative Names (SANs) Sample:\n"
+            for san in ssl_info.get("san_list")[:10]:
+                md += f"- `{san}`\n"
+
+        # 3. Passive Subdomain Enumeration
+        subs_list = subdomains_info.get("subdomains", [])
+        if subs_list:
+            md += f"""
+---
+
+## 3. Passive Subdomain Enumeration (Multi-Source Discovery)
+
+**Total Discovered:** `{subdomains_info.get('total_found', 0)}` | **Active Resolved:** `{subdomains_info.get('active_count', 0)}`  
+**Sources:** `{', '.join(subdomains_info.get('sources_queried', []))}`
+
+| Subdomain | Resolved IP | CDN / Origin Provider | Target Match |
+|---|---|---|---|
+"""
+            for s in subs_list[:25]:
+                match_tag = "**TARGET FQDN**" if s.get("is_target_fqdn") else "Subdomain"
+                md += f"| `{s.get('subdomain')}` | `{s.get('ip')}` | {s.get('cdn_provider')} | {match_tag} |\n"
+
+        # 4. Authentication Architecture & Token Fingerprinting
+        jwt_tokens = auth_info.get("jwt_tokens", [])
+        cookie_audit = auth_info.get("cookie_audit", {})
+        sanctum = auth_info.get("laravel_sanctum", {})
+
+        md += f"""
+---
+
+## 4. Authentication Architecture & Token Fingerprinting
+
+- **Primary Auth Architecture:** `{auth_info.get('auth_architecture', 'Standard')}`
+- **Laravel Sanctum Status:** `{'ACTIVE (Stateful SPA Mode via /sanctum/csrf-cookie)' if sanctum.get('is_sanctum_active') else 'Not Active'}`
+- **Auth Mechanisms Detected:** `{', '.join(auth_info.get('auth_types_detected', ['None']))}`
+- **Cookie Security Flags:** HttpOnly: `{'PASS' if cookie_audit.get('httponly_all') else 'FAIL'}` | Secure: `{'PASS' if cookie_audit.get('secure_all') else 'FAIL'}` | SameSite: `{cookie_audit.get('samesite', 'Default')}`
+"""
+        if jwt_tokens:
+            md += "\n### JSON Web Token (JWT) Decoded Claims:\n"
+            for idx, jwt in enumerate(jwt_tokens, 1):
+                md += f"""
+#### JWT Token #{idx} (Location: {jwt.get('found_in')})
+- **Algorithm:** `{jwt.get('algorithm')}` | **Type:** `{jwt.get('token_type')}`
+- **Issuer (`iss`):** `{jwt.get('issuer')}`
+- **Subject (`sub`):** `{jwt.get('subject')}`
+- **Roles / Scope:** `{jwt.get('roles')}`
+- **Expiration (`exp`):** `{jwt.get('expiration')}` ({'EXPIRED' if jwt.get('is_expired') else 'VALID'})
+"""
+
+        # 5. Content Discovery & Sensitive Endpoints
+        endpoints = discovery.get("endpoints", [])
+        cdx_paths = discovery.get("cdx_historical_paths_found", [])
+
+        if endpoints or cdx_paths:
+            md += f"""
+---
+
+## 5. Content Discovery & Endpoint Fuzzing
+
+**Baseline Status:** `{discovery.get('baseline_status')}` (Size: `{discovery.get('baseline_length')} bytes`) | **Total Discovered:** `{discovery.get('total_discovered')}`
+
+| Endpoint Path | Status Badge | Severity | Category / Description | Content-Type | Size |
+|---|---|---|---|---|---|
+"""
+            for ep in endpoints:
+                md += f"| `{ep.get('path')}` | `{ep.get('status_badge')}` | **{ep.get('severity')}** | {ep.get('description')} | `{ep.get('content_type')}` | {ep.get('size_bytes')} B |\n"
+
+            if cdx_paths:
+                md += "\n### Wayback Machine Historical Indexed Endpoints:\n"
+                for cp in cdx_paths[:10]:
+                    md += f"- `{cp}`\n"
+
+        # 6. Origin Leak Alert
         if origin_leak.get("leak_detected"):
             md += f"""
 ---
 
-## 2. Cloudflare / CDN Origin IP Leak Alert
+## 6. Cloudflare / CDN Origin IP Leak Alert
 
 > [!CAUTION]
 > **POTENTIAL ORIGIN IP LEAK DETECTED**  
-> Direct backend server IP addresses were discovered via unproxied records:
+> Direct backend server IP addresses were discovered via unproxied DNS/MX records:
 
 | Leaked Origin IP | Discovery Source | Risk Assessment |
 |---|---|---|
@@ -216,56 +312,14 @@ class ReportGenerator:
             for leak in origin_leak.get("leaked_ips", []):
                 md += f"| `{leak.get('ip')}` | {leak.get('source')} | {leak.get('risk')} |\n"
 
-        # SSL / TLS Cert
+        # 7. Technology Stack
         md += f"""
 ---
 
-## 3. SSL / TLS Certificate Intelligence
-
-- **Issuer Organization:** `{ssl_info.get('issuer', {}).get('organizationName', 'N/A')}` ({ssl_info.get('issuer', {}).get('commonName', 'N/A')})
-- **Valid Until:** `{ssl_info.get('valid_until', 'N/A')}` ({ssl_info.get('days_remaining') if ssl_info.get('days_remaining') is not None else 'N/A'} days remaining)
-- **TLS Protocol & Cipher:** `{ssl_info.get('tls_version', 'N/A')}` - `{ssl_info.get('cipher', 'N/A')}`
-- **Passive Subdomains Discovered (crt.sh):** `{crt_data.get('total_found', 0)} unique subdomains`
-
-"""
-        if crt_data.get("unique_subdomains"):
-            md += "### Subdomains Sample (via Certificate Transparency):\n"
-            for sub in crt_data.get("unique_subdomains")[:15]:
-                md += f"- `{sub}`\n"
-
-        # Security Headers
-        md += f"""
----
-
-## 4. Security Headers Evaluation (Grade: {sec_grade.get('grade', 'N/A')})
-
-| Security Header | Status | Score | Details |
-|---|---|---|---|
-"""
-        for h_name, h_eval in sec_grade.get("evaluations", {}).items():
-            md += f"| `{h_name}` | **{h_eval.get('status')}** | `{h_eval.get('score')}` | {h_eval.get('details')} |\n"
-
-        # Sensitive files
-        if sensitive_files:
-            md += f"""
----
-
-## 5. Sensitive File & Directory Discovery
-
-| Path | Status Code | Severity | Description | Size |
-|---|---|---|---|---|
-"""
-            for sf in sensitive_files:
-                md += f"| `{sf.get('path')}` | `{sf.get('status')}` | **{sf.get('severity')}** | {sf.get('description')} | {sf.get('size_bytes')} B |\n"
-
-        # Tech stack
-        md += f"""
----
-
-## 6. Technology Stack & Infrastructure
+## 7. Technology Stack & Infrastructure
 
 - **Server IP:** `{geo.get('ip', 'N/A')}` ({geo.get('city', '')}, {geo.get('country', '')})
-- **ISP / Organization:** `{geo.get('isp', '')} / {geo.get('organization', '')}`
+- **ISP / Organization:** `{geo.get('isp', '')} / {geo.get('organization', '')}` (ASN: `{geo.get('asn', 'N/A')}`)
 - **Web Servers:** `{', '.join(stack.get('web_servers', [])) or 'Hidden / Generic'}`
 - **Programming Languages:** `{', '.join(stack.get('programming_languages', [])) or 'N/A'}`
 - **Backend Frameworks:** `{', '.join(stack.get('backend_frameworks', [])) or 'N/A'}`
@@ -274,7 +328,7 @@ class ReportGenerator:
 - **WAF / Firewalls:** `{', '.join(stack.get('waf_and_security', [])) or 'None Detected'}`
 
 ---
-*Report generated by PATRICT-OSINT Framework v2.3.0*
+*Report generated by PATRICT-OSINT Framework v3.0.0 Enterprise Edition*
 """
         try:
             with open(filepath, "w", encoding="utf-8") as f:

@@ -263,16 +263,25 @@ class PATRICTOrchestrator:
         dns_rec = w_data.get("dns_records", {})
         sec_grade = w_data.get("security_headers_grade", {})
         ssl_info = w_data.get("ssl_certificate", {})
-        crt_data = w_data.get("crtsh_subdomains", {})
+        identity = w_data.get("domain_identity", {})
+        subdomains_info = w_data.get("passive_subdomains", {})
+        discovery = w_data.get("content_discovery", {})
         origin_leak = w_data.get("origin_ip_leak", {})
-        sensitive_files = w_data.get("sensitive_files_found", [])
         threat_data = w_data.get("threat_vulnerability_summary", {})
 
+        target_fqdn = identity.get("target_fqdn") or w_data.get("domain", target)
+        root_domain = identity.get("root_domain") or target_fqdn
+
         print(f"\n{BLUE}{'='*67}{RESET}")
-        print(f"             {WHITE}{BOLD}HASIL RECONNAISSANCE WEB & WHATWEB FINGERPRINT{RESET}")
+        print(f"       {WHITE}{BOLD}ENTERPRISE WEB & INFRASTRUCTURE INTELLIGENCE{RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
         print(f"  {CYAN}Target URL{RESET}          : {WHITE}{target}{RESET}")
-        print(f"  {CYAN}Domain Asli{RESET}         : {WHITE}{w_data.get('domain', 'N/A')}{RESET}")
+        print(f"  {CYAN}Target FQDN{RESET}         : {WHITE}{target_fqdn}{RESET}")
+        print(f"  {CYAN}Apex / Root Domain{RESET}  : {WHITE}{root_domain}{RESET}")
+        if identity.get("is_subdomain"):
+            print(f"  {CYAN}Subdomain Prefix{RESET}   : {YELLOW}{identity.get('subdomain_prefix')}{RESET} (Subdomain Scope)")
+        else:
+            print(f"  {CYAN}Domain Scope{RESET}       : {GREEN}Apex / Root Domain (Full Infrastructure Scope){RESET}")
         
         status_code = w_data.get('final_status', 200)
         status_phrase = http.client.responses.get(status_code, "OK" if status_code == 200 else "")
@@ -286,7 +295,7 @@ class PATRICTOrchestrator:
         methods = w_data.get("http_methods_allowed", [])
         print(f"  {CYAN}Allowed Methods{RESET}     : {GREEN}{', '.join(methods) if methods else 'GET, HEAD'}{RESET}")
 
-        # Server GeoIP
+        # 1. Server GeoIP & Network
         print(f"\n{YELLOW}[+] SERVER & NETWORK GEOIP:{RESET}")
         print(f"  * IP Publik Server  : {WHITE}{geo.get('ip', 'N/A')}{RESET}")
         
@@ -303,20 +312,15 @@ class PATRICTOrchestrator:
 
         lat = geo.get("latitude")
         lon = geo.get("longitude")
-        if lat is not None and lon is not None and str(lat) != "-" and str(lon) != "-":
-            coord_str = f"(Lat: {lat}, Lon: {lon})"
-        else:
-            coord_str = ""
-
-        loc_line = f"{loc_str} {coord_str}".strip()
-        print(f"  * Lokasi Server     : {WHITE}{loc_line}{RESET}")
+        loc_display = f"{loc_str} {coord_str}".strip()
+        print(f"  * Lokasi Server     : {WHITE}{loc_display}{RESET}")
         print(f"  * ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'Unknown ISP / Protected IP'}{RESET}")
         if geo.get("asn"):
             print(f"  * ASN Jaringan      : {WHITE}{geo.get('asn')}{RESET}")
         if geo.get("maps_url"):
             print(f"  * Lokasi Google Maps: {CYAN}{geo.get('maps_url')}{RESET}")
 
-        # 1. SSL/TLS Certificate Intelligence
+        # 2. SSL/TLS Certificate Intelligence & SANs
         print(f"\n{YELLOW}[+] SERTIFIKAT SSL/TLS & ENKRIPSI:{RESET}")
         if ssl_info.get("has_ssl"):
             issuer_org = ssl_info.get("issuer", {}).get("organizationName") or ssl_info.get("issuer", {}).get("commonName") or "N/A"
@@ -329,23 +333,34 @@ class PATRICTOrchestrator:
             print(f"  * Masa Berlaku      : {WHITE}{ssl_info.get('valid_from', '-')} s/d {ssl_info.get('valid_until', '-')}{RESET}")
             print(f"  * Status Kedaluwarsa: {exp_badge}")
             print(f"  * Protokol & Cipher : {WHITE}{ssl_info.get('tls_version', 'TLS')} - {ssl_info.get('cipher', 'N/A')}{RESET}")
+            wild_status = f"{YELLOW}Ada Wildcard (*.) [OK]{RESET}" if ssl_info.get("has_wildcard") else f"{WHITE}Single/Multi-Host{RESET}"
+            print(f"  * Tipe Sertifikat   : {wild_status}")
             print(f"  * SANs Terdaftar    : {WHITE}{len(ssl_info.get('san_list', []))} domain{RESET}")
         else:
             print(f"  * {RED}Tidak ada sertifikat SSL/TLS aktif (Port 443 tidak merespon/Plain HTTP).{RESET}")
 
-        # 2. Passive Subdomain Discovery via CT Logs (crt.sh)
-        sub_count = crt_data.get("total_found", 0)
-        print(f"\n{YELLOW}[+] SUBDOMAIN PASIF DARI CERTIFICATE TRANSPARENCY ({sub_count} Ditemukan):{RESET}")
-        if crt_data.get("unique_subdomains"):
-            sample_subs = crt_data.get("unique_subdomains", [])[:8]
-            for sub in sample_subs:
-                print(f"  * {CYAN}{sub}{RESET}")
-            if sub_count > 8:
-                print(f"  * {WHITE}... dan {sub_count - 8} subdomain lainnya (lihat file laporan JSON/MD).{RESET}")
+        # 3. Mesin Enumerasi Subdomain Pasif Multi-Source
+        sub_list = subdomains_info.get("subdomains", [])
+        total_sub_found = subdomains_info.get("total_found", 0)
+        active_sub_cnt = subdomains_info.get("active_count", 0)
+        print(f"\n{YELLOW}[+] ENUMERASI SUBDOMAIN PASIF ({total_sub_found} Ditemukan | {active_sub_cnt} Aktif):{RESET}")
+        print(f"  * Sumber Analisis   : {WHITE}{', '.join(subdomains_info.get('sources_queried', ['crt.sh', 'HackerTarget']))}{RESET}")
+        if sub_list:
+            for s_entry in sub_list[:12]:
+                s_name = s_entry.get("subdomain", "")
+                s_ip = s_entry.get("ip", "N/A")
+                s_prov = s_entry.get("cdn_provider", "Direct Origin IP")
+                is_target = s_entry.get("is_target_fqdn", False)
+                
+                target_tag = f"{YELLOW}[TARGET FQDN]{RESET} " if is_target else "  * "
+                prov_color = CYAN if s_entry.get("is_cdn") else GREEN
+                print(f"  {target_tag}{WHITE}{s_name : <32}{RESET} -> {WHITE}{s_ip : <16}{RESET} [{prov_color}{s_prov}{RESET}]")
+            if len(sub_list) > 12:
+                print(f"  * {WHITE}... dan {total_sub_found - 12} subdomain lainnya (tersimpan di laporan JSON/MD).{RESET}")
         else:
-            print(f"  * {WHITE}Tidak ditemukan subdomain pasif di CT logs.{RESET}")
+            print(f"  * {WHITE}Tidak ditemukan subdomain pasif tambahan.{RESET}")
 
-        # 3. Cloudflare / CDN Origin IP Leak Alert
+        # 4. Cloudflare / CDN Origin IP Leak Alert
         if origin_leak.get("leak_detected"):
             print(f"\n{RED}{BOLD}[!] PERINGATAN: POTENSI KEBOCORAN ORIGIN IP SERVER TERDETEKSI!{RESET}")
             print(f"  * Target di balik   : {YELLOW}{origin_leak.get('cdn_provider')}{RESET}")
@@ -357,29 +372,39 @@ class PATRICTOrchestrator:
             print(f"  * Status CDN        : {GREEN}Aktif ({origin_leak.get('cdn_provider')}){RESET}")
             print(f"  * Kebocoran Origin  : {GREEN}Tidak ditemukan (Rapat) [OK]{RESET}")
 
-        # 4. Security Headers Grader
-        grade = sec_grade.get("grade", "N/A")
-        score = sec_grade.get("score", 0)
-        grade_color = GREEN if grade in ("A+", "A") else (CYAN if grade in ("B+", "B") else (YELLOW if grade == "C" else RED))
+        # 5. Arsitektur Autentikasi, Sesi, & Token Fingerprinting
+        print(f"\n{YELLOW}[+] ARSITEKTUR AUTENTIKASI & TOKEN SECURITY:{RESET}")
+        auth_arch = auth.get("auth_architecture", "Standard / Stateless")
+        print(f"  * Mode Autentikasi  : {CYAN}{BOLD}{auth_arch}{RESET}")
         
-        print(f"\n{YELLOW}[+] SECURITY HEADERS GRADER:{RESET}")
-        print(f"  * Skor & Grade      : {grade_color}{BOLD}[ GRADE: {grade} ]{RESET} {WHITE}(Skor Keamanan: {score}/100){RESET}")
-        evals = sec_grade.get("evaluations", {})
-        for h_name, h_val in evals.items():
-            st = h_val.get("status")
-            st_badge = f"{GREEN}[PASS]{RESET}" if st == "PASS" else (f"{YELLOW}[WARN]{RESET}" if st == "WARN" else f"{RED}[FAIL]{RESET}")
-            print(f"  * {h_name : <28}: {st_badge} {WHITE}{h_val.get('score')}{RESET} - {h_val.get('details')}")
+        sanctum = auth.get("laravel_sanctum", {})
+        if sanctum.get("is_sanctum_active"):
+            print(f"  * Laravel Sanctum   : {GREEN}[ACTIVE]{RESET} {WHITE}Endpoint {sanctum.get('sanctum_endpoint')} aktif (Stateful SPA CSRF){RESET}")
+        
+        jwt_list = auth.get("jwt_tokens", [])
+        if jwt_list:
+            print(f"  * JWT Tokens        : {YELLOW}{len(jwt_list)} token terdeteksi & didekode{RESET}")
+            for j in jwt_list[:2]:
+                exp_status = f"{RED}[EXPIRED]{RESET}" if j.get("is_expired") else f"{GREEN}[VALID]{RESET}"
+                print(f"    - [{CYAN}{j.get('found_in')}{RESET}] Alg: {WHITE}{j.get('algorithm')}{RESET} | Iss: {WHITE}{j.get('issuer')}{RESET} | Sub: {WHITE}{j.get('subject')}{RESET} | Exp: {WHITE}{j.get('expiration')} {exp_status}")
 
-        if sec_grade.get("recommendations"):
-            print(f"  {YELLOW}Rekomendasi Hardening:{RESET}")
-            for rec in sec_grade.get("recommendations")[:3]:
-                print(f"    - {WHITE}{rec}{RESET}")
+        cookie_audit = auth.get("cookie_audit", {})
+        httponly = f"{GREEN}PASS [OK]{RESET}" if cookie_audit.get("httponly_all") else f"{RED}FAIL (Rentan XSS / No HttpOnly){RESET}"
+        secure = f"{GREEN}PASS [OK]{RESET}" if cookie_audit.get("secure_all") else f"{RED}FAIL (No Secure Flag){RESET}"
+        samesite = cookie_audit.get("samesite") or "Not Configured"
+        print(f"  * Cookie Audit      : HttpOnly: {httponly} | Secure: {secure} | SameSite: {WHITE}{samesite}{RESET}")
 
-        # 5. Sensitive File & Directory Discovery
-        if sensitive_files:
-            print(f"\n{YELLOW}[+] DISCOVERY FILE & DIREKTORI SENSITIF ({len(sensitive_files)} Terdeteksi):{RESET}")
-            for sf in sensitive_files:
-                sev = sf.get("severity", "INFO")
+        # 6. High-Performance Content Discovery & Endpoint Fuzzing
+        endpoints = discovery.get("endpoints", [])
+        cdx_paths = discovery.get("cdx_historical_paths_found", [])
+        b_status = discovery.get("baseline_status", 404)
+        b_len = discovery.get("baseline_length", 0)
+
+        print(f"\n{YELLOW}[+] CONTENT DISCOVERY & ENDPOINT FUZZING ({len(endpoints)} Ditemukan):{RESET}")
+        print(f"  * Kalibrasi Soft-404: {WHITE}Baseline HTTP {b_status} ({b_len} bytes) - Catch-All Filtered [OK]{RESET}")
+        if endpoints:
+            for ep in endpoints:
+                sev = ep.get("severity", "INFO")
                 if sev in ("CRITICAL", "HIGH"):
                     sev_color = RED
                 elif sev == "BLOCKED":
@@ -388,10 +413,29 @@ class PATRICTOrchestrator:
                     sev_color = YELLOW
                 else:
                     sev_color = CYAN
-                status_color = GREEN if sf.get("status") == 200 else (YELLOW if sf.get("status") in (401, 403) else WHITE)
-                print(f"  * {sev_color}[{sev : <8}]{RESET} {WHITE}{sf.get('path') : <28}{RESET} : {status_color}[{sf.get('status')}]{RESET} ({sf.get('description')}, {sf.get('size_bytes')} B)")
+                
+                st_code = ep.get("status", 200)
+                st_color = GREEN if st_code == 200 else (YELLOW if st_code in (401, 403) else CYAN)
+                print(f"  * {sev_color}[{sev : <8}]{RESET} {WHITE}{ep.get('path') : <28}{RESET} : {st_color}{ep.get('status_badge', f'[{st_code}]')}{RESET} ({ep.get('description')}, {ep.get('size_bytes')} B)")
 
-        # 6. Tech Stack ala WhatWeb
+        if cdx_paths:
+            print(f"  * {CYAN}Wayback Machine Historical Paths:{RESET} {WHITE}{', '.join(cdx_paths[:4])}{RESET}")
+
+        # 7. Security Headers Grader
+        grade = sec_grade.get("grade", "N/A")
+        score = sec_grade.get("score", 0)
+        grade_color = GREEN if grade in ("A+", "A") else (CYAN if grade in ("B+", "B") else (YELLOW if grade == "C" else RED))
+        
+        print(f"\n{YELLOW}[+] SECURITY HEADERS GRADER:{RESET}")
+        print(f"  * Skor & Grade      : {grade_color}{BOLD}[ GRADE: {grade} ]{RESET} {WHITE}(Skor Keamanan: {score}/100){RESET}")
+        details = sec_grade.get("details", {})
+        for h_name, h_val in details.items():
+            st = h_val.get("status")
+            st_badge = f"{GREEN}[PASS]{RESET}" if st == "PASS" else (f"{YELLOW}[WARN]{RESET}" if st == "WARN" else f"{RED}[FAIL]{RESET}")
+            val_txt = h_val.get('value') or h_val.get('reason') or ''
+            print(f"  * {h_name : <28}: {st_badge} {WHITE}{h_val.get('score')} pts{RESET} - {val_txt}")
+
+        # 8. Tech Stack ala WhatWeb
         print(f"\n{YELLOW}[+] STACK TEKNOLOGI & FINGERPRINTING:{RESET}")
         servers = stack.get("web_servers", [])
         langs = stack.get("programming_languages", [])
@@ -399,7 +443,6 @@ class PATRICTOrchestrator:
         frontends = stack.get("frontend_libraries", [])
         cms_list = stack.get("cms_and_platforms", [])
         wafs = stack.get("waf_and_security", [])
-        cdns = stack.get("analytics_and_cdn", [])
 
         print(f"  * Web Servers       : {WHITE}{', '.join(servers) if servers else 'Hidden / Generic'}{RESET}")
         if langs:
@@ -412,60 +455,40 @@ class PATRICTOrchestrator:
             print(f"  * CMS / Platform    : {WHITE}{', '.join(cms_list)}{RESET}")
         if wafs:
             print(f"  * WAF / Firewall    : {YELLOW}{', '.join(wafs)}{RESET}")
-        if cdns:
-            print(f"  * CDN / Analytics   : {WHITE}{', '.join(cdns)}{RESET}")
 
-        # 7. Auth & Security
-        print(f"\n{YELLOW}[+] AUTHENTICATION & COOKIE SECURITY:{RESET}")
-        auth_types = auth.get("auth_type_detected", ["Standard / Stateless"])
-        print(f"  * Tipe Auth/Session : {WHITE}{', '.join(auth_types)}{RESET}")
-        
-        flags = auth.get("security_flags", {})
-        httponly = f"{GREEN}Aktif [OK]{RESET}" if flags.get("httponly") else f"{RED}Tidak Aktif [FAIL]{RESET}"
-        secure = f"{GREEN}Aktif [OK]{RESET}" if flags.get("secure") else f"{RED}Tidak Aktif [FAIL]{RESET}"
-        samesite = flags.get("samesite") or "Default"
-        print(f"  * Cookie Flags      : HttpOnly: {httponly} | Secure: {secure} | SameSite: {WHITE}{samesite}{RESET}")
-
-        # 8. DNS Records
+        # 9. DNS Records Matrix
         if any(dns_rec.values()):
             print(f"\n{YELLOW}[+] DNS RECORDS MATRIX:{RESET}")
-            for r_type in ["A", "MX", "NS", "TXT"]:
+            for r_type in ["A", "AAAA", "MX", "NS", "TXT"]:
                 r_val = dns_rec.get(r_type, [])
                 if r_val:
                     print(f"  * {r_type : <18}: {WHITE}{', '.join(r_val[:3])}{RESET}")
 
-        # 9. Network & Infrastructure OSINT (if available)
+        # 10. Infrastruktur Jaringan & Reverse DNS (if available)
         net_data = results.get("network_osint", {}).get("data", {})
         if net_data:
             print(f"\n{YELLOW}[+] INFRASTRUKTUR JARINGAN & REVERSE DNS:{RESET}")
             print(f"  * Target Host       : {WHITE}{net_data.get('target_host')}{RESET}")
             if net_data.get("resolved_ipv4"):
                 print(f"  * Alamat IPv4       : {WHITE}{', '.join(net_data.get('resolved_ipv4'))}{RESET}")
-            if net_data.get("resolved_ipv6"):
-                print(f"  * Alamat IPv6       : {WHITE}{', '.join(net_data.get('resolved_ipv6'))}{RESET}")
             print(f"  * Reverse DNS (PTR) : {CYAN}{net_data.get('reverse_dns_ptr')}{RESET}")
-            asn = net_data.get("asn_and_isp", {})
-            if asn.get("isp") and asn.get("isp") != "N/A":
-                print(f"  * ISP / Organisasi  : {WHITE}{asn.get('isp')} ({asn.get('org', 'N/A')}) - ASN: {asn.get('as_number', 'N/A')}{RESET}")
+            asn_info = net_data.get("asn_and_isp", {})
+            if asn_info.get("isp") and asn_info.get("isp") != "N/A":
+                print(f"  * ISP / Organisasi  : {WHITE}{asn_info.get('isp')} ({asn_info.get('org', 'N/A')}) - ASN: {asn_info.get('as_number', 'N/A')}{RESET}")
             open_ports = net_data.get("open_ports_summary", [])
             if open_ports:
                 ports_str = ", ".join([f"{p['port']}/{p['service']}" for p in open_ports])
                 print(f"  * Port Terbuka      : {GREEN}{ports_str}{RESET}")
 
-        # 10. Web Presence & Wayback Machine History (if available)
+        # 11. Riwayat Arsip Web Wayback Machine (if available)
         hist_data = results.get("web_history", {}).get("data", {})
         if hist_data and hist_data.get("has_history"):
             print(f"\n{YELLOW}[+] RIWAYAT ARSIP WEB (WAYBACK MACHINE CDX):{RESET}")
             print(f"  * Status Arsip      : {GREEN}{hist_data.get('status')}{RESET}")
             print(f"  * Snapshot Pertama  : {WHITE}{hist_data.get('first_snapshot') or 'N/A'}{RESET}")
             print(f"  * Snapshot Terakhir : {WHITE}{hist_data.get('last_snapshot') or 'N/A'}{RESET}")
-            hist_urls = hist_data.get("historical_urls", [])
-            if hist_urls:
-                print(f"  * Arsip Snapshot URL:")
-                for hu in hist_urls[:3]:
-                    print(f"    - [{CYAN}{hu.get('timestamp')}{RESET}] ({hu.get('status_code')}) {WHITE}{hu.get('wayback_url')}{RESET}")
 
-        # 11. Executive Vulnerability & Threat Assessment Summary Matrix
+        # 12. Executive Vulnerability & Threat Assessment Summary Matrix
         print(f"\n{BLUE}{'='*67}{RESET}")
         print(f"         {WHITE}{BOLD}RANGKUMAN ANCAMAN & VULNERABILITY ASSESSMENT{RESET}")
         print(f"{BLUE}{'='*67}{RESET}")
@@ -483,9 +506,6 @@ class PATRICTOrchestrator:
                 print(f"  [{idx}] {th_color}[{th.get('severity')}]{RESET} {WHITE}{BOLD}{th.get('title')}{RESET} ({th.get('category')})")
                 print(f"      Dampak          : {WHITE}{th.get('impact')}{RESET}")
                 print(f"      Mitigasi        : {GREEN}{th.get('mitigation')}{RESET}")
-        else:
-            print(f"  {GREEN}[+] Konfigurasi aman, tidak ditemukan celah ancaman kritis pada scope ini.{RESET}")
-
         print(f"{BLUE}{'='*67}{RESET}\n")
 
     def _print_file_terminal(self, target: str, results: Dict[str, Any]):
