@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ============================================================
 # PATRICT-OSINT FRAMEWORK - MONOREPO ORCHESTRATOR
-# VERSION: 3.0.0
+# VERSION: 3.0.1
 # ============================================================
 
 import os
@@ -22,7 +22,7 @@ from visualizers.graph_engine import GraphEngine
 from reports.report_generator import ReportGenerator
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 
 # ANSI Terminal Colors
 BLUE = "\033[1;34m"
@@ -312,6 +312,7 @@ class PATRICTOrchestrator:
 
         lat = geo.get("latitude")
         lon = geo.get("longitude")
+        coord_str = f"(Lat: {lat}, Lon: {lon})" if (lat is not None and lon is not None and str(lat) != "-" and str(lon) != "-") else ""
         loc_display = f"{loc_str} {coord_str}".strip()
         print(f"  * Lokasi Server     : {WHITE}{loc_display}{RESET}")
         print(f"  * ISP / Organisasi  : {WHITE}{geo.get('isp') or geo.get('organization') or 'Unknown ISP / Protected IP'}{RESET}")
